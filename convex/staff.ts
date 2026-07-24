@@ -1,13 +1,30 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { requireMemberBySlug } from "./lib/authz";
 import { appError } from "./lib/errors";
 
 // -----------------------------------------------------------------------------
 // Staff — bookable resources/calendars under a business. A staff member may be
 // login-less (no `userId`) — a manager-managed calendar. Phase 2 hangs
-// per-employee availability + Google Calendar off these rows.
+// per-employee availability + calendar (Google/Outlook) off these rows, or a
+// Calendly-style external link (externalBookingUrl) for hand-off booking.
 // -----------------------------------------------------------------------------
+
+/** Normalize a Calendly/external booking URL, or "" → cleared. Must be http(s). */
+function normalizeUrl(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    appError("INVALID_INPUT", "Enter a full booking link, e.g. https://calendly.com/you.");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    appError("INVALID_INPUT", "The booking link must start with http:// or https://.");
+  }
+  return url.toString();
+}
 
 export const list = query({
   args: { slug: v.string() },
@@ -21,12 +38,35 @@ export const list = query({
   },
 });
 
+/** Public (embed-key) staff list — bookable + active, safe fields only. */
+export const listBookableForBusiness = internalQuery({
+  args: { businessId: v.id("businesses") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("staff")
+      .withIndex("by_business_active", (q) =>
+        q.eq("businessId", args.businessId).eq("active", true),
+      )
+      .collect();
+    return rows
+      .filter((s) => s.bookable)
+      .sort((a, b) => a.order - b.order)
+      .map((s) => ({
+        _id: s._id,
+        name: s.name,
+        title: s.title ?? null,
+        externalBookingUrl: s.externalBookingUrl ?? null,
+      }));
+  },
+});
+
 export const add = mutation({
   args: {
     slug: v.string(),
     name: v.string(),
     title: v.optional(v.string()),
     bookable: v.boolean(),
+    externalBookingUrl: v.optional(v.string()),
   },
   returns: v.id("staff"),
   handler: async (ctx, args) => {
@@ -42,6 +82,10 @@ export const add = mutation({
       name: args.name.trim(),
       title: args.title?.trim() || undefined,
       bookable: args.bookable,
+      externalBookingUrl:
+        args.externalBookingUrl !== undefined
+          ? normalizeUrl(args.externalBookingUrl)
+          : undefined,
       active: true,
       order,
     });
@@ -56,6 +100,7 @@ export const update = mutation({
     title: v.optional(v.string()),
     bookable: v.optional(v.boolean()),
     active: v.optional(v.boolean()),
+    externalBookingUrl: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -70,11 +115,15 @@ export const update = mutation({
       title?: string | undefined;
       bookable?: boolean;
       active?: boolean;
+      externalBookingUrl?: string | undefined;
     } = {};
     if (args.name !== undefined) patch.name = args.name.trim();
     if (args.title !== undefined) patch.title = args.title.trim() || undefined;
     if (args.bookable !== undefined) patch.bookable = args.bookable;
     if (args.active !== undefined) patch.active = args.active;
+    if (args.externalBookingUrl !== undefined) {
+      patch.externalBookingUrl = normalizeUrl(args.externalBookingUrl);
+    }
 
     await ctx.db.patch(args.staffId, patch);
     return null;

@@ -44,21 +44,21 @@ test("calendar connect authz — employee-only for linked staff, owner for share
 
   // Owner CANNOT connect the employee's own (login-linked) calendar.
   await expect(
-    asOwner.query(internal.google.assertAccess, { slug: "clip", staffId: empStaff }),
+    asOwner.query(internal.calendar.assertAccess, { slug: "clip", staffId: empStaff }),
   ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
 
   // The employee CAN connect their own.
   expect(
-    await asEmp.query(internal.google.assertAccess, { slug: "clip", staffId: empStaff }),
+    await asEmp.query(internal.calendar.assertAccess, { slug: "clip", staffId: empStaff }),
   ).toMatchObject({ businessId: business!._id });
 
   // Owner CAN connect the login-less shared "Main" calendar.
   expect(
-    await asOwner.query(internal.google.assertAccess, { slug: "clip", staffId: mainStaff!._id }),
+    await asOwner.query(internal.calendar.assertAccess, { slug: "clip", staffId: mainStaff!._id }),
   ).toMatchObject({ businessId: business!._id });
 
   // A staff member CANNOT connect the shared calendar.
   await expect(
-    asEmp.query(internal.google.assertAccess, { slug: "clip", staffId: mainStaff!._id }),
+    asEmp.query(internal.calendar.assertAccess, { slug: "clip", staffId: mainStaff!._id }),
   ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
 });

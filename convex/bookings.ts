@@ -12,6 +12,11 @@ import { requireMemberBySlug, isManager } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { randomHex } from "./lib/keys";
 import { DAY_MS, isOpenSlot, type Span } from "./lib/slots";
+import {
+  blackoutSpans,
+  expandByBuffer,
+  policyOf,
+} from "./lib/bookingRules";
 
 // -----------------------------------------------------------------------------
 // Booking engine. `book` (action) mints a cancel token, then `create` (a single
@@ -28,10 +33,12 @@ const customerArgs = {
 
 async function ruleAndBusy(
   ctx: MutationCtx,
+  business: Doc<"businesses">,
   staffId: Id<"staff">,
   start: number,
   excludeId?: Id<"bookings">,
 ): Promise<{ rule: Doc<"availabilityRules"> | null; busy: Span[] }> {
+  const policy = policyOf(business);
   const rule = await ctx.db
     .query("availabilityRules")
     .withIndex("by_staff", (q) => q.eq("staffId", staffId))
@@ -42,19 +49,45 @@ async function ruleAndBusy(
       q.eq("staffId", staffId).gte("start", start - DAY_MS).lt("start", start + DAY_MS),
     )
     .collect();
-  const busy: Span[] = rows
+  const appts: Span[] = rows
     .filter((b) => b.status === "confirmed" && b._id !== excludeId)
     .map((b) => ({ start: b.start, end: b.end }));
 
-  const gbusy = await ctx.db
-    .query("googleBusy")
+  const cbusy = await ctx.db
+    .query("calendarBusy")
     .withIndex("by_staff_start", (q) =>
       q.eq("staffId", staffId).gte("start", start - DAY_MS).lt("start", start + DAY_MS),
     )
     .collect();
-  for (const g of gbusy) busy.push({ start: g.start, end: g.end });
+  for (const g of cbusy) appts.push({ start: g.start, end: g.end });
 
-  return { rule, busy };
+  // Appointments carry a buffer; time-off blackouts are hard-closed as-is.
+  const buffered = expandByBuffer(appts, policy.bufferMinutes);
+  const blocks = await blackoutSpans(
+    ctx,
+    business._id,
+    staffId,
+    start - DAY_MS,
+    start + DAY_MS,
+  );
+  return { rule, busy: [...buffered, ...blocks] };
+}
+
+/** Appointment length: the service's duration, else the staff's default slot. */
+function slotDuration(
+  service: Doc<"services"> | null,
+  rule: Doc<"availabilityRules">,
+): number {
+  return service?.durationMinutes ?? rule.slotMinutes;
+}
+
+/** Does this staff perform the service? (no restriction list = anyone.) */
+function performsService(
+  staff: Doc<"staff">,
+  service: Doc<"services"> | null,
+): boolean {
+  if (!service?.staffIds || service.staffIds.length === 0) return true;
+  return service.staffIds.includes(staff._id);
 }
 
 /**
@@ -89,17 +122,20 @@ function canManageBooking(
 /** Round-robin / least-busy pick among staff who are free at `start`. */
 async function assignStaff(
   ctx: MutationCtx,
-  businessId: Id<"businesses">,
+  business: Doc<"businesses">,
   start: number,
+  service: Doc<"services"> | null,
 ): Promise<{ staffId: Id<"staff">; rule: Doc<"availabilityRules"> } | null> {
   const staff = (
     await ctx.db
       .query("staff")
       .withIndex("by_business_active", (q) =>
-        q.eq("businessId", businessId).eq("active", true),
+        q.eq("businessId", business._id).eq("active", true),
       )
       .collect()
-  ).filter((s) => s.bookable);
+  ).filter(
+    (s) => s.bookable && !s.externalBookingUrl && performsService(s, service),
+  );
 
   const candidates: {
     staffId: Id<"staff">;
@@ -108,8 +144,10 @@ async function assignStaff(
   }[] = [];
 
   for (const s of staff) {
-    const { rule, busy } = await ruleAndBusy(ctx, s._id, start);
-    if (!rule || !isOpenSlot(rule, busy, start)) continue;
+    const { rule, busy } = await ruleAndBusy(ctx, business, s._id, start);
+    if (!rule || !isOpenSlot(rule, busy, start, slotDuration(service, rule))) {
+      continue;
+    }
     candidates.push({ staffId: s._id, rule, load: busy.length });
   }
   if (candidates.length === 0) return null;
@@ -117,72 +155,147 @@ async function assignStaff(
   return { staffId: candidates[0].staffId, rule: candidates[0].rule };
 }
 
+type BookParams = {
+  staffId: Id<"staff"> | "any";
+  start: number;
+  source: "dashboard" | "assistant" | "widget";
+  cancelToken: string;
+  serviceId?: Id<"services">;
+  customerName: string;
+  customerEmail: string;
+  customerPhone?: string;
+  note?: string;
+};
+
+/**
+ * The transactional heart of booking, tenant already resolved. Shared by the
+ * member path (`create`, membership-gated) and the public path
+ * (`createForBusiness`, embed-key-gated) so both enforce the exact same rules:
+ * service duration, lead-time/window, staff eligibility, and double-booking.
+ */
+async function bookCore(
+  ctx: MutationCtx,
+  business: Doc<"businesses">,
+  args: BookParams,
+): Promise<{
+  bookingId: Id<"bookings">;
+  staffId: Id<"staff">;
+  start: number;
+  end: number;
+}> {
+  // Resolve the service (if chosen) — its duration drives the slot length.
+  let service: Doc<"services"> | null = null;
+  if (args.serviceId) {
+    service = await ctx.db.get(args.serviceId);
+    if (!service || service.businessId !== business._id || !service.active) {
+      appError("NOT_FOUND", "That service is unavailable.");
+    }
+  }
+
+  // Lead-time + booking-window guardrails (authoritative; getSlots mirrors it).
+  const policy = policyOf(business);
+  const now = Date.now();
+  if (args.start < now + policy.minNoticeMinutes * 60_000) {
+    appError("CONFLICT", "That time is too soon to book.");
+  }
+  if (args.start > now + policy.maxAdvanceDays * DAY_MS) {
+    appError("CONFLICT", "That's further ahead than bookings are allowed.");
+  }
+
+  let staffId: Id<"staff">;
+  let rule: Doc<"availabilityRules">;
+
+  if (args.staffId === "any") {
+    const picked = await assignStaff(ctx, business, args.start, service);
+    if (!picked) {
+      appError("CONFLICT", "No one is available at that time.");
+    }
+    staffId = picked.staffId;
+    rule = picked.rule;
+  } else {
+    const staff = await ctx.db.get(args.staffId);
+    if (!staff || staff.businessId !== business._id) {
+      appError("NOT_FOUND", "That staff member no longer exists.");
+    }
+    if (!staff.bookable || !staff.active) {
+      appError("CONFLICT", "That staff member isn't bookable.");
+    }
+    if (staff.externalBookingUrl) {
+      appError("CONFLICT", "This staff member books through an external link.");
+    }
+    if (!performsService(staff, service)) {
+      appError("CONFLICT", "That staff member doesn't offer this service.");
+    }
+    const { rule: r, busy } = await ruleAndBusy(ctx, business, staff._id, args.start);
+    if (!r) appError("CONFLICT", "That staff member has no availability set.");
+    // Double-booking safety: re-check against live bookings inside the txn.
+    if (!isOpenSlot(r, busy, args.start, slotDuration(service, r))) {
+      appError("CONFLICT", "That time isn't available — it may have just been taken.");
+    }
+    staffId = staff._id;
+    rule = r;
+  }
+
+  const end = args.start + slotDuration(service, rule) * 60_000;
+  const bookingId = await ctx.db.insert("bookings", {
+    businessId: business._id,
+    staffId,
+    start: args.start,
+    end,
+    status: "confirmed",
+    customerName: args.customerName.trim(),
+    customerEmail: args.customerEmail.trim(),
+    customerPhone: args.customerPhone?.trim() || undefined,
+    serviceId: args.serviceId,
+    note: args.note?.trim() || undefined,
+    cancelToken: args.cancelToken,
+    source: args.source,
+  });
+
+  // Best-effort: write the appointment onto the staff's connected calendar.
+  await ctx.scheduler.runAfter(0, internal.calendar.pushEvent, { bookingId });
+
+  return { bookingId, staffId, start: args.start, end };
+}
+
+const bookingCoreArgs = {
+  staffId: v.union(v.id("staff"), v.literal("any")),
+  start: v.number(),
+  source: v.union(
+    v.literal("dashboard"),
+    v.literal("assistant"),
+    v.literal("widget"),
+  ),
+  cancelToken: v.string(),
+  serviceId: v.optional(v.id("services")),
+  ...customerArgs,
+};
+
+const bookingReturn = v.object({
+  bookingId: v.id("bookings"),
+  staffId: v.id("staff"),
+  start: v.number(),
+  end: v.number(),
+});
+
+// Member path: tenant resolved by the caller's membership.
 export const create = internalMutation({
-  args: {
-    slug: v.string(),
-    staffId: v.union(v.id("staff"), v.literal("any")),
-    start: v.number(),
-    source: v.union(
-      v.literal("dashboard"),
-      v.literal("assistant"),
-      v.literal("widget"),
-    ),
-    cancelToken: v.string(),
-    ...customerArgs,
-  },
-  returns: v.object({
-    bookingId: v.id("bookings"),
-    staffId: v.id("staff"),
-    start: v.number(),
-    end: v.number(),
-  }),
+  args: { slug: v.string(), ...bookingCoreArgs },
+  returns: bookingReturn,
   handler: async (ctx, args) => {
     const { business } = await requireMemberBySlug(ctx, args.slug);
+    return await bookCore(ctx, business, args);
+  },
+});
 
-    let staffId: Id<"staff">;
-    let rule: Doc<"availabilityRules">;
-
-    if (args.staffId === "any") {
-      const picked = await assignStaff(ctx, business._id, args.start);
-      if (!picked) {
-        appError("CONFLICT", "No one is available at that time.");
-      }
-      staffId = picked.staffId;
-      rule = picked.rule;
-    } else {
-      const staff = await ctx.db.get(args.staffId);
-      if (!staff || staff.businessId !== business._id) {
-        appError("NOT_FOUND", "That staff member no longer exists.");
-      }
-      if (!staff.bookable || !staff.active) {
-        appError("CONFLICT", "That staff member isn't bookable.");
-      }
-      const { rule: r, busy } = await ruleAndBusy(ctx, staff._id, args.start);
-      if (!r) appError("CONFLICT", "That staff member has no availability set.");
-      // Double-booking safety: re-check against live bookings inside the txn.
-      if (!isOpenSlot(r, busy, args.start)) {
-        appError("CONFLICT", "That time isn't available — it may have just been taken.");
-      }
-      staffId = staff._id;
-      rule = r;
-    }
-
-    const end = args.start + rule.slotMinutes * 60_000;
-    const bookingId = await ctx.db.insert("bookings", {
-      businessId: business._id,
-      staffId,
-      start: args.start,
-      end,
-      status: "confirmed",
-      customerName: args.customerName.trim(),
-      customerEmail: args.customerEmail.trim(),
-      customerPhone: args.customerPhone?.trim() || undefined,
-      note: args.note?.trim() || undefined,
-      cancelToken: args.cancelToken,
-      source: args.source,
-    });
-
-    return { bookingId, staffId, start: args.start, end };
+// Public path: tenant resolved from a verified embed key (see public.ts).
+export const createForBusiness = internalMutation({
+  args: { businessId: v.id("businesses"), ...bookingCoreArgs },
+  returns: bookingReturn,
+  handler: async (ctx, args) => {
+    const business = await ctx.db.get(args.businessId);
+    if (!business) appError("NOT_FOUND", "That business doesn't exist.");
+    return await bookCore(ctx, business, args);
   },
 });
 
@@ -191,6 +304,7 @@ export const book = action({
     slug: v.string(),
     staffId: v.union(v.id("staff"), v.literal("any")),
     start: v.number(),
+    serviceId: v.optional(v.id("services")),
     source: v.optional(
       v.union(
         v.literal("dashboard"),
@@ -220,6 +334,7 @@ export const book = action({
       slug: args.slug,
       staffId: args.staffId,
       start: args.start,
+      serviceId: args.serviceId,
       source: args.source ?? "dashboard",
       cancelToken,
       customerName: args.customerName,
@@ -255,6 +370,7 @@ export const listUpcoming = query({
           return {
             _id: b._id,
             staffId: b.staffId,
+            serviceId: b.serviceId ?? null,
             start: b.start,
             end: b.end,
             staffName: staff?.name ?? "—",
@@ -280,6 +396,12 @@ export const cancel = mutation({
       appError("FORBIDDEN", "You can only manage your own bookings.");
     }
     await ctx.db.patch(args.bookingId, { status: "cancelled" });
+    if (bk.calendarEventId) {
+      await ctx.scheduler.runAfter(0, internal.calendar.removeEvent, {
+        staffId: bk.staffId,
+        eventId: bk.calendarEventId,
+      });
+    }
     return null;
   },
 });
@@ -304,15 +426,42 @@ export const reschedule = mutation({
       appError("FORBIDDEN", "You can only manage your own bookings.");
     }
 
+    // Same lead-time + window rules apply to the new time.
+    const policy = policyOf(business);
+    const now = Date.now();
+    if (args.newStart < now + policy.minNoticeMinutes * 60_000) {
+      appError("CONFLICT", "That time is too soon to book.");
+    }
+    if (args.newStart > now + policy.maxAdvanceDays * DAY_MS) {
+      appError("CONFLICT", "That's further ahead than bookings are allowed.");
+    }
+
+    // Same service ⇒ same duration when moving the appointment.
+    const service = bk.serviceId ? await ctx.db.get(bk.serviceId) : null;
+
     // Validate the new slot for the same staff, excluding this booking itself.
-    const { rule, busy } = await ruleAndBusy(ctx, bk.staffId, args.newStart, bk._id);
+    const { rule, busy } = await ruleAndBusy(ctx, business, bk.staffId, args.newStart, bk._id);
     if (!rule) appError("CONFLICT", "That staff member has no availability set.");
-    if (!isOpenSlot(rule, busy, args.newStart)) {
+    const duration = slotDuration(service, rule);
+    if (!isOpenSlot(rule, busy, args.newStart, duration)) {
       appError("CONFLICT", "That time isn't available — it may have just been taken.");
     }
 
-    const end = args.newStart + rule.slotMinutes * 60_000;
+    const end = args.newStart + duration * 60_000;
+    const oldEventId = bk.calendarEventId;
     await ctx.db.patch(bk._id, { start: args.newStart, end });
+
+    // Move the calendar event: delete the old, create a fresh one at the new time.
+    if (oldEventId) {
+      await ctx.scheduler.runAfter(0, internal.calendar.removeEvent, {
+        staffId: bk.staffId,
+        eventId: oldEventId,
+      });
+    }
+    await ctx.scheduler.runAfter(0, internal.calendar.pushEvent, {
+      bookingId: bk._id,
+    });
+
     return { start: args.newStart, end };
   },
 });

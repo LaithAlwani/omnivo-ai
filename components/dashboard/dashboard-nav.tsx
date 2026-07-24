@@ -9,8 +9,10 @@ function navItems(slug: string) {
     { label: "Overview", href: `/dashboard/${slug}`, exact: true },
     { label: "Branding", href: `/dashboard/${slug}/branding`, exact: false },
     { label: "Team", href: `/dashboard/${slug}/team`, exact: false },
+    { label: "Services", href: `/dashboard/${slug}/services`, exact: false },
     { label: "Schedule", href: `/dashboard/${slug}/schedule`, exact: false },
     { label: "Bookings", href: `/dashboard/${slug}/bookings`, exact: false },
+    { label: "Leads", href: `/dashboard/${slug}/leads`, exact: false },
     { label: "Knowledge", href: `/dashboard/${slug}/knowledge`, exact: false },
     { label: "Assistant", href: `/dashboard/${slug}/assistant`, exact: false },
   ];

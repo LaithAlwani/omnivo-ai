@@ -19,11 +19,13 @@ const fmtDay = (ms: number) =>
 export function SlotPicker({
   slug,
   staffId,
+  serviceId,
   selected,
   onSelect,
 }: {
   slug: string;
   staffId: "any" | Id<"staff">;
+  serviceId?: Id<"services">;
   selected: number | null;
   onSelect: (start: number) => void;
 }) {
@@ -32,6 +34,7 @@ export function SlotPicker({
   const slots = useQuery(api.slots.getSlots, {
     slug,
     staffId,
+    serviceId,
     fromMs: nowMs,
     days: 14,
   });

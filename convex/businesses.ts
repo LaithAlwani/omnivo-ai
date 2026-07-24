@@ -208,6 +208,131 @@ export const updateBranding = mutation({
 });
 
 /**
+ * Internal: resolve a business by an embed-key prefix for the public widget.
+ * Returns the stored secret hash + origin allow-list so the calling action can
+ * verify the key (hashing needs Web Crypto, only available in actions).
+ */
+export const byEmbedPrefix = internalQuery({
+  args: { prefix: v.string() },
+  returns: v.union(
+    v.object({
+      businessId: v.id("businesses"),
+      slug: v.string(),
+      embedKeyHash: v.string(),
+      domains: v.array(v.string()),
+      suspended: v.boolean(),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const business = await ctx.db
+      .query("businesses")
+      .withIndex("by_embedKeyPrefix", (q) =>
+        q.eq("embedKeyPrefix", args.prefix),
+      )
+      .unique();
+    if (!business) return null;
+    return {
+      businessId: business._id,
+      slug: business.slug,
+      embedKeyHash: business.embedKeyHash,
+      domains: business.domains,
+      suspended: business.status === "suspended",
+    };
+  },
+});
+
+/** Internal: public branding for the widget (safe subset — no storage ids). */
+export const configForBusiness = internalQuery({
+  args: { businessId: v.id("businesses") },
+  returns: v.union(
+    v.object({
+      name: v.string(),
+      assistantName: v.string(),
+      welcomeMsg: v.string(),
+      primaryColor: v.string(),
+      accentColor: v.string(),
+      position: v.union(v.literal("left"), v.literal("right")),
+      chatIcon: v.union(v.string(), v.null()),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const business = await ctx.db.get(args.businessId);
+    if (!business) return null;
+    const b = business.branding;
+    return {
+      name: business.name,
+      assistantName: b.assistantName,
+      welcomeMsg: b.welcomeMsg,
+      primaryColor: b.primaryColor,
+      accentColor: b.accentColor,
+      position: b.position,
+      chatIcon: b.chatIcon ?? null,
+    };
+  },
+});
+
+/** Set the business's operating timezone (manager only). Validated via Intl. */
+export const setTimezone = mutation({
+  args: { slug: v.string(), timezone: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const business = await ctx.db
+      .query("businesses")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+    if (!business) appError("NOT_FOUND", "That business doesn't exist.");
+    await requireMember(ctx, business._id, "admin");
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: args.timezone });
+    } catch {
+      appError("INVALID_INPUT", "That timezone isn't recognized.");
+    }
+    await ctx.db.patch(business._id, { timezone: args.timezone });
+    return null;
+  },
+});
+
+/** Set the booking guardrails: lead time, booking window, buffer (manager). */
+export const setBookingPolicy = mutation({
+  args: {
+    slug: v.string(),
+    policy: v.object({
+      minNoticeMinutes: v.number(),
+      maxAdvanceDays: v.number(),
+      bufferMinutes: v.number(),
+    }),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const business = await ctx.db
+      .query("businesses")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+    if (!business) appError("NOT_FOUND", "That business doesn't exist.");
+    await requireMember(ctx, business._id, "admin");
+
+    const { minNoticeMinutes, maxAdvanceDays, bufferMinutes } = args.policy;
+    if (
+      minNoticeMinutes < 0 ||
+      bufferMinutes < 0 ||
+      maxAdvanceDays < 1 ||
+      maxAdvanceDays > 365
+    ) {
+      appError(
+        "INVALID_INPUT",
+        "Lead time and buffer can't be negative, and the window must be 1–365 days.",
+      );
+    }
+    await ctx.db.patch(business._id, {
+      bookingPolicy: { minNoticeMinutes, maxAdvanceDays, bufferMinutes },
+    });
+    return null;
+  },
+});
+
+/**
  * Internal: data the embed-key reveal/rotate actions need — the caller's stored
  * password hash (for verification) + the current key. Never exposed to clients.
  */

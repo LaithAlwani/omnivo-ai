@@ -5,6 +5,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { errorText } from "@/lib/errors";
+import { useConfirm } from "@/components/ui/confirm";
 import {
   useBusiness,
   isManagerRole,
@@ -16,9 +17,6 @@ const SLOT_OPTIONS = [15, 30, 45, 60, 90];
 type Interval = { start: number; end: number };
 type Week = { intervals: Interval[] }[];
 
-function emptyWeek(): Week {
-  return Array.from({ length: 7 }, () => ({ intervals: [] }));
-}
 function defaultWeekdays(): Week {
   // Mon–Fri 9:00–17:00 as a friendly starting point.
   return Array.from({ length: 7 }, (_, d) => ({
@@ -159,7 +157,7 @@ function AvailabilityEditor({
 
   return (
     <div className="mt-8">
-      <GoogleCalendar slug={slug} staffId={staffId} />
+      <CalendarConnect slug={slug} staffId={staffId} />
 
       <p className="mb-2 text-sm text-bone-dim">Weekly hours</p>
       <fieldset disabled={!canEdit || pending} className="space-y-2">
@@ -284,32 +282,202 @@ function AvailabilityEditor({
           {error && <span className="text-sm text-ember-deep">{error}</span>}
         </div>
       )}
+
+      <TimeOff slug={slug} staffId={staffId} canEdit={canEdit} />
     </div>
   );
 }
 
-function GoogleCalendar({
+const fmtRange = (startMs: number, endMs: number) => {
+  const s = new Date(startMs);
+  const e = new Date(endMs);
+  const opts: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  };
+  return `${s.toLocaleString([], opts)} → ${e.toLocaleString([], opts)}`;
+};
+
+// datetime-local <-> ms (interpreted in the browser's local zone).
+const toLocalInput = (ms: number) => {
+  const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60_000);
+  return d.toISOString().slice(0, 16);
+};
+
+function TimeOff({
+  slug,
+  staffId,
+  canEdit,
+}: {
+  slug: string;
+  staffId: Id<"staff">;
+  canEdit: boolean;
+}) {
+  const blackouts = useQuery(api.blackouts.list, { slug, staffId });
+  const add = useMutation(api.blackouts.add);
+  const remove = useMutation(api.blackouts.remove);
+  const { confirm, dialog } = useConfirm();
+
+  const now = new Date();
+  const [start, setStart] = useState(toLocalInput(now.getTime() + 3_600_000));
+  const [end, setEnd] = useState(toLocalInput(now.getTime() + 7_200_000));
+  const [reason, setReason] = useState("");
+  const [everyone, setEveryone] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setPending(true);
+    try {
+      await add({
+        slug,
+        staffId: everyone ? undefined : staffId,
+        start: new Date(start).getTime(),
+        end: new Date(end).getTime(),
+        reason: reason || undefined,
+      });
+      setReason("");
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="mt-10 border-t border-line pt-6">
+      <p className="text-sm text-bone-dim">Time off &amp; holidays</p>
+      <p className="mt-1 text-xs text-faint">
+        Blocks these times from booking — for this staff member, or the whole
+        business.
+      </p>
+
+      <div className="mt-3 space-y-2">
+        {blackouts?.length === 0 && (
+          <p className="text-xs text-faint">No time off scheduled.</p>
+        )}
+        {blackouts?.map((bo) => (
+          <div
+            key={bo._id}
+            className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-sm text-bone-dim">
+                {fmtRange(bo.start, bo.end)}
+                {bo.staffId == null && (
+                  <span className="ml-2 rounded-full border border-line-strong px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-faint">
+                    Whole business
+                  </span>
+                )}
+              </p>
+              {bo.reason && <p className="truncate text-xs text-faint">{bo.reason}</p>}
+            </div>
+            {canEdit && (
+              <button
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: "Remove time off?",
+                    message: "These times will open back up for booking.",
+                    confirmLabel: "Remove",
+                    destructive: true,
+                  });
+                  if (ok)
+                    remove({ slug, blackoutId: bo._id }).catch((e) =>
+                      setError(errorText(e)),
+                    );
+                }}
+                className="shrink-0 text-xs text-muted transition-colors hover:text-ember-deep"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {canEdit && (
+        <form onSubmit={onAdd} className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-xs text-faint">
+            From
+            <input
+              type="datetime-local"
+              required
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className="h-9 rounded-lg border border-line-strong bg-surface px-2 text-sm text-bone focus-visible:border-ember"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-faint">
+            To
+            <input
+              type="datetime-local"
+              required
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              className="h-9 rounded-lg border border-line-strong bg-surface px-2 text-sm text-bone focus-visible:border-ember"
+            />
+          </label>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason (optional)"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-3 text-sm text-bone placeholder:text-faint focus-visible:border-ember"
+          />
+          <label className="flex items-center gap-2 text-xs text-bone-dim">
+            <input
+              type="checkbox"
+              checked={everyone}
+              onChange={(e) => setEveryone(e.target.checked)}
+              className="h-4 w-4 accent-ember"
+            />
+            Whole business
+          </label>
+          <button
+            type="submit"
+            disabled={pending}
+            className="h-9 rounded-full border border-line-strong px-4 text-sm text-bone-dim transition-colors hover:border-ember/50 hover:text-bone disabled:opacity-60"
+          >
+            {pending ? "Adding…" : "Add time off"}
+          </button>
+        </form>
+      )}
+      {error && <p className="mt-2 text-sm text-ember-deep">{error}</p>}
+      {dialog}
+    </div>
+  );
+}
+
+const PROVIDER_LABEL: Record<string, string> = {
+  google: "Google Calendar",
+  microsoft: "Outlook Calendar",
+};
+
+function CalendarConnect({
   slug,
   staffId,
 }: {
   slug: string;
   staffId: Id<"staff">;
 }) {
-  const status = useQuery(api.google.status, { slug, staffId });
-  const getAuthUrl = useAction(api.google.getAuthUrl);
-  const disconnect = useAction(api.google.disconnect);
-  const sync = useAction(api.google.syncBusy);
-  const [busy, setBusy] = useState<null | "connect" | "sync" | "disconnect">(
-    null,
-  );
+  const status = useQuery(api.calendar.status, { slug, staffId });
+  const getAuthUrl = useAction(api.calendar.getAuthUrl);
+  const disconnect = useAction(api.calendar.disconnect);
+  const sync = useAction(api.calendar.syncBusy);
+  const [busy, setBusy] = useState<
+    null | "google" | "microsoft" | "sync" | "disconnect"
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [synced, setSynced] = useState(false);
 
-  async function connect() {
+  async function connect(provider: "google" | "microsoft") {
     setError(null);
-    setBusy("connect");
+    setBusy(provider);
     try {
-      const { url } = await getAuthUrl({ slug, staffId });
+      const { url } = await getAuthUrl({ slug, staffId, provider });
       window.location.href = url;
     } catch (e) {
       setError(errorText(e));
@@ -334,17 +502,22 @@ function GoogleCalendar({
     }
   }
 
+  const connectedLabel =
+    status?.provider != null ? PROVIDER_LABEL[status.provider] : "Calendar";
+
   return (
     <div className="mb-6 rounded-xl border border-line bg-surface/40 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-bone">Google Calendar</p>
+          <p className="text-sm text-bone">
+            {status?.connected ? connectedLabel : "Calendar"}
+          </p>
           <p className="mt-0.5 text-xs text-faint">
             {status === undefined
               ? "…"
               : status.connected
-                ? `Connected${status.email ? ` · ${status.email}` : ""} — busy times block slots.`
-                : "Not connected — external events won't block slots yet."}
+                ? `Connected${status.email ? ` · ${status.email}` : ""} — busy times block slots and bookings sync to it.`
+                : "Not connected — link Google or Outlook so external events block slots and bookings appear on it."}
           </p>
         </div>
         {status !== undefined && !status.canManage && !status.connected && (
@@ -376,13 +549,22 @@ function GoogleCalendar({
                 </button>
               </>
             ) : (
-              <button
-                onClick={connect}
-                disabled={busy !== null}
-                className="rounded-full bg-ember px-4 py-1.5 text-sm font-medium text-[#160b04] transition-colors hover:bg-flare disabled:opacity-60"
-              >
-                {busy === "connect" ? "Redirecting…" : "Connect Google Calendar"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => connect("google")}
+                  disabled={busy !== null}
+                  className="rounded-full bg-ember px-4 py-1.5 text-sm font-medium text-[#160b04] transition-colors hover:bg-flare disabled:opacity-60"
+                >
+                  {busy === "google" ? "Redirecting…" : "Connect Google"}
+                </button>
+                <button
+                  onClick={() => connect("microsoft")}
+                  disabled={busy !== null}
+                  className="rounded-full border border-line-strong px-4 py-1.5 text-sm font-medium text-bone transition-colors hover:border-ember/50 disabled:opacity-60"
+                >
+                  {busy === "microsoft" ? "Redirecting…" : "Connect Outlook"}
+                </button>
+              </div>
             )}
           </div>
         )}

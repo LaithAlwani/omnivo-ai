@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { errorText } from "@/lib/errors";
@@ -20,8 +20,29 @@ export function WidgetKeyCard() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [snippetCopied, setSnippetCopied] = useState(false);
+  const [host, setHost] = useState("");
+
+  // window.location is only known after mount — the effect is the right place.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHost(window.location.origin);
+  }, []);
 
   const masked = `ek_${b.embedKeyPrefix}.${"•".repeat(20)}`;
+
+  const snippet =
+    `<script src="${host || "https://app.your-domain.com"}/widget.js"\n` +
+    `  data-embed-key="${key ?? `ek_${b.embedKeyPrefix}.YOUR_KEY`}"\n` +
+    `  data-color="${b.branding.primaryColor}"\n` +
+    `  data-position="${b.branding.position}"\n` +
+    `  async></script>`;
+
+  async function copySnippet() {
+    await navigator.clipboard.writeText(snippet);
+    setSnippetCopied(true);
+    setTimeout(() => setSnippetCopied(false), 1500);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -159,6 +180,27 @@ export function WidgetKeyCard() {
       )}
 
       {error && <p className="mt-3 text-sm text-ember-deep">{error}</p>}
+
+      <div className="mt-6 border-t border-line pt-5">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm text-bone">Install on your site</h3>
+          <button
+            onClick={copySnippet}
+            className="shrink-0 rounded-full border border-line-strong px-3 py-1.5 text-xs text-bone-dim transition-colors hover:border-ember/50 hover:text-bone"
+          >
+            {snippetCopied ? "Copied!" : "Copy snippet"}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Paste this just before <code className="text-bone-dim">&lt;/body&gt;</code>.{" "}
+          {key
+            ? "Your live key is included."
+            : "Reveal your key above to drop it in."}
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-lg border border-line-strong bg-ink px-4 py-3 font-mono text-xs leading-relaxed text-bone-dim">
+          <code>{snippet}</code>
+        </pre>
+      </div>
     </div>
   );
 }

@@ -86,14 +86,21 @@ function overlaps(aStart: number, aEnd: number, spans: Span[]): boolean {
 /**
  * Open slot start times (UTC ms) for a staff in [fromMs, toMs), excluding times
  * that overlap a busy span. Only slots at or after fromMs.
+ *
+ * `slotMinutes` is the step (how often a slot may start); `durationMinutes` is
+ * how long the appointment occupies — the service length, defaulting to the step
+ * when no service is chosen. A slot is offered only if the whole duration fits
+ * inside an availability interval and touches no busy span.
  */
 export function openSlots(
   rule: AvailabilityRule,
   busy: Span[],
   fromMs: number,
   toMs: number,
+  durationMinutes: number = rule.slotMinutes,
 ): number[] {
-  const dur = rule.slotMinutes * 60_000;
+  const step = rule.slotMinutes;
+  const dur = durationMinutes * 60_000;
   const out = new Set<number>();
 
   // Walk each local day the window can touch (±1 to catch timezone edges).
@@ -102,7 +109,7 @@ export function openSlots(
     const day = rule.week[dow];
     if (!day) continue;
     for (const iv of day.intervals) {
-      for (let t = iv.start; t + rule.slotMinutes <= iv.end; t += rule.slotMinutes) {
+      for (let t = iv.start; t + durationMinutes <= iv.end; t += step) {
         const start = wallToUtc(y, mo, d, t, rule.timezone);
         if (start < fromMs || start >= toMs) continue;
         if (!overlaps(start, start + dur, busy)) out.add(start);
@@ -117,19 +124,21 @@ export function isOpenSlot(
   rule: AvailabilityRule,
   busy: Span[],
   startUtc: number,
+  durationMinutes: number = rule.slotMinutes,
 ): boolean {
   const { y, mo, d, dow } = localDate(startUtc, rule.timezone);
   const day = rule.week[dow];
   if (!day) return false;
 
+  const step = rule.slotMinutes;
   const midnight = wallToUtc(y, mo, d, 0, rule.timezone);
   const localMin = Math.round((startUtc - midnight) / 60_000);
   const fits = day.intervals.some(
     (iv) =>
       localMin >= iv.start &&
-      localMin + rule.slotMinutes <= iv.end &&
-      (localMin - iv.start) % rule.slotMinutes === 0,
+      localMin + durationMinutes <= iv.end &&
+      (localMin - iv.start) % step === 0,
   );
   if (!fits) return false;
-  return !overlaps(startUtc, startUtc + rule.slotMinutes * 60_000, busy);
+  return !overlaps(startUtc, startUtc + durationMinutes * 60_000, busy);
 }

@@ -26,8 +26,9 @@ export default function TeamPage() {
       <div>
         <h1 className="font-display text-3xl text-bone">Team</h1>
         <p className="mt-1 text-sm text-muted">
-          Members sign in and manage {b.name}. Staff are bookable calendars —
-          they don&rsquo;t need a login.
+          Members sign in and manage {b.name}. Staff are bookable calendars and
+          don&rsquo;t need a login — but link a member to one so that person
+          self-manages their own availability and calendar.
         </p>
         {!canEdit && (
           <p className="mt-4 rounded-lg border border-line bg-surface/50 px-4 py-3 text-sm text-muted">
@@ -55,9 +56,11 @@ function Members({
   // An admin can assign admin/staff, but only an owner can grant/manage owner.
   const assignableRoles = isOwner ? ROLES : (["admin", "staff"] as const);
   const members = useQuery(api.team.listMembers, { slug });
+  const staff = useQuery(api.staff.list, { slug });
   const addMember = useMutation(api.team.addMember);
   const updateRole = useMutation(api.team.updateMemberRole);
   const removeMember = useMutation(api.team.removeMember);
+  const linkStaff = useMutation(api.team.linkStaff);
 
   const { confirm, dialog } = useConfirm();
   const [email, setEmail] = useState("");
@@ -111,6 +114,37 @@ function Members({
               </p>
               {m.name && (
                 <p className="truncate font-mono text-xs text-faint">{m.email}</p>
+              )}
+              {canEdit && (
+                <label className="mt-1.5 flex items-center gap-1.5 text-xs text-faint">
+                  Calendar
+                  <select
+                    value={m.linkedStaffId ?? "none"}
+                    onChange={(e) =>
+                      act(() =>
+                        linkStaff({
+                          slug,
+                          membershipId: m.membershipId as Id<"memberships">,
+                          target:
+                            e.target.value === "none" || e.target.value === "create"
+                              ? (e.target.value as "none" | "create")
+                              : (e.target.value as Id<"staff">),
+                        }),
+                      )
+                    }
+                    className="h-7 rounded-md border border-line-strong bg-surface px-1.5 text-xs text-bone-dim focus-visible:border-ember"
+                  >
+                    <option value="none">Not linked</option>
+                    {staff
+                      ?.filter((s) => !s.userId || s._id === m.linkedStaffId)
+                      .map((s) => (
+                        <option key={s._id} value={s._id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    <option value="create">＋ Create calendar</option>
+                  </select>
+                </label>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -244,6 +278,11 @@ function Staff({ slug, canEdit }: { slug: string; canEdit: boolean }) {
   return (
     <section>
       <h2 className="text-lg text-bone">Staff &amp; calendars</h2>
+      <p className="mt-1 text-sm text-muted">
+        Bookable people or resources. Leave the link blank to use internal slots
+        (with an optional Google/Outlook calendar on the Schedule page), or paste
+        a Calendly-style link to hand booking off to it.
+      </p>
 
       <div className="mt-4 divide-y divide-line rounded-xl border border-line">
         {staff === undefined && (
@@ -253,15 +292,23 @@ function Staff({ slug, canEdit }: { slug: string; canEdit: boolean }) {
           <p className="px-4 py-4 text-sm text-faint">No staff yet.</p>
         )}
         {staff?.map((s) => (
-          <div
-            key={s._id}
-            className="flex items-center justify-between gap-4 px-4 py-3"
-          >
+          <div key={s._id} className="px-4 py-3">
+          <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
               <p className="truncate text-sm text-bone">
                 {s.name}
                 {!s.active && (
                   <span className="ml-2 text-xs text-faint">(inactive)</span>
+                )}
+                {s.userId && (
+                  <span className="ml-2 rounded-full border border-line-strong px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-bone-dim">
+                    Login
+                  </span>
+                )}
+                {s.externalBookingUrl && (
+                  <span className="ml-1.5 rounded-full border border-ember/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-ember">
+                    External
+                  </span>
                 )}
               </p>
               {s.title && (
@@ -272,7 +319,7 @@ function Staff({ slug, canEdit }: { slug: string; canEdit: boolean }) {
               <Toggle
                 label="Bookable"
                 on={s.bookable}
-                disabled={!canEdit}
+                disabled={!canEdit || !!s.externalBookingUrl}
                 onClick={() =>
                   act(() =>
                     updateStaff({ slug, staffId: s._id, bookable: !s.bookable }),
@@ -308,6 +355,29 @@ function Staff({ slug, canEdit }: { slug: string; canEdit: boolean }) {
                 </>
               )}
             </div>
+          </div>
+          {canEdit && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="shrink-0 text-xs text-faint">Calendly / link</span>
+              <input
+                type="url"
+                defaultValue={s.externalBookingUrl ?? ""}
+                placeholder="https://calendly.com/you — leave blank for internal booking"
+                onBlur={(e) => {
+                  const next = e.target.value.trim();
+                  if (next === (s.externalBookingUrl ?? "")) return;
+                  act(() =>
+                    updateStaff({
+                      slug,
+                      staffId: s._id,
+                      externalBookingUrl: next,
+                    }),
+                  );
+                }}
+                className={`${inputCls} h-8 min-w-0 flex-1 text-xs`}
+              />
+            </div>
+          )}
           </div>
         ))}
       </div>

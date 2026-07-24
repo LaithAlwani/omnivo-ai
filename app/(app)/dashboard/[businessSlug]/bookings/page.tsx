@@ -24,11 +24,16 @@ const fmtDay = (ms: number) =>
     day: "numeric",
   });
 
-type RescheduleTarget = { bookingId: Id<"bookings">; staffId: Id<"staff"> };
+type RescheduleTarget = {
+  bookingId: Id<"bookings">;
+  staffId: Id<"staff">;
+  serviceId: Id<"services"> | null;
+};
 
 export default function BookingsPage() {
   const b = useBusiness();
   const staff = useQuery(api.staff.list, { slug: b.slug });
+  const services = useQuery(api.services.list, { slug: b.slug });
   const book = useAction(api.bookings.book);
   const cancel = useMutation(api.bookings.cancel);
   const { confirm, dialog } = useConfirm();
@@ -39,8 +44,10 @@ export default function BookingsPage() {
   });
 
   const bookable = staff?.filter((s) => s.bookable && s.active) ?? [];
+  const activeServices = services?.filter((s) => s.active) ?? [];
 
   const [staffSel, setStaffSel] = useState<"any" | Id<"staff">>("any");
+  const [serviceSel, setServiceSel] = useState<"" | Id<"services">>("");
   const [slot, setSlot] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -60,6 +67,7 @@ export default function BookingsPage() {
         slug: b.slug,
         staffId: staffSel,
         start: slot,
+        serviceId: serviceSel || undefined,
         customerName: name,
         customerEmail: email,
         customerPhone: phone || undefined,
@@ -108,24 +116,46 @@ export default function BookingsPage() {
         <div className="min-w-0 rounded-xl border border-line bg-surface/40 p-6">
           <h2 className="text-lg text-bone">New booking</h2>
 
-          <label className="mt-4 block text-sm text-bone-dim">
-            Staff
-            <select
-              value={staffSel}
-              onChange={(e) => {
-                setStaffSel(e.target.value as "any" | Id<"staff">);
-                setSlot(null);
-              }}
-              className={`${inputCls} mt-1`}
-            >
-              <option value="any">Any available</option>
-              {bookable.map((s) => (
-                <option key={s._id} value={s._id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {activeServices.length > 0 && (
+              <label className="block text-sm text-bone-dim">
+                Service
+                <select
+                  value={serviceSel}
+                  onChange={(e) => {
+                    setServiceSel(e.target.value as "" | Id<"services">);
+                    setSlot(null);
+                  }}
+                  className={`${inputCls} mt-1`}
+                >
+                  <option value="">Any / unspecified</option>
+                  {activeServices.map((s) => (
+                    <option key={s._id} value={s._id}>
+                      {s.name} · {s.durationMinutes}m
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="block text-sm text-bone-dim">
+              Staff
+              <select
+                value={staffSel}
+                onChange={(e) => {
+                  setStaffSel(e.target.value as "any" | Id<"staff">);
+                  setSlot(null);
+                }}
+                className={`${inputCls} mt-1`}
+              >
+                <option value="any">Any available</option>
+                {bookable.map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           <div className="mt-5">
             <p className="text-sm text-bone-dim">Pick a day</p>
@@ -133,6 +163,7 @@ export default function BookingsPage() {
               <SlotPicker
                 slug={b.slug}
                 staffId={staffSel}
+                serviceId={serviceSel || undefined}
                 selected={slot}
                 onSelect={setSlot}
               />
@@ -198,7 +229,11 @@ export default function BookingsPage() {
                 <div className="mt-2 flex gap-4">
                   <button
                     onClick={() =>
-                      setReschedule({ bookingId: bk._id, staffId: bk.staffId })
+                      setReschedule({
+                        bookingId: bk._id,
+                        staffId: bk.staffId,
+                        serviceId: bk.serviceId,
+                      })
                     }
                     className="text-xs text-muted transition-colors hover:text-bone"
                   >
@@ -289,6 +324,7 @@ function RescheduleModal({
           <SlotPicker
             slug={slug}
             staffId={target.staffId}
+            serviceId={target.serviceId ?? undefined}
             selected={null}
             onSelect={pick}
           />

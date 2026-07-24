@@ -21,6 +21,21 @@ export const tierValidator = v.union(
   v.literal("enterprise"),
 );
 
+// Lead pipeline stages, in order. `won`/`lost` are terminal.
+export const leadStatusValidator = v.union(
+  v.literal("new"),
+  v.literal("contacted"),
+  v.literal("qualified"),
+  v.literal("won"),
+  v.literal("lost"),
+);
+
+export const contactSourceValidator = v.union(
+  v.literal("dashboard"),
+  v.literal("assistant"),
+  v.literal("widget"),
+);
+
 export default defineSchema({
   // Convex Auth managed tables (users, authAccounts, authSessions, …).
   ...authTables,
@@ -35,6 +50,10 @@ export default defineSchema({
       v.literal("suspended"),
     ),
     tier: tierValidator,
+    // IANA timezone the business operates in (e.g. "America/New_York"). The
+    // assistant anchors relative dates ("next Tuesday") to this; per-staff
+    // availability can still override with its own timezone.
+    timezone: v.optional(v.string()),
     // Widget security: origin allow-list + hashed embed key (never stored raw).
     domains: v.array(v.string()),
     embedKeyHash: v.string(),
@@ -55,6 +74,15 @@ export default defineSchema({
       model: v.optional(v.string()),
       guardrails: v.optional(v.string()),
     }),
+    // Booking guardrails. Absent fields fall back to sane defaults (see
+    // lib/bookingRules.ts): no minimum notice, 60-day window, no buffer.
+    bookingPolicy: v.optional(
+      v.object({
+        minNoticeMinutes: v.number(), // can't book within this many minutes
+        maxAdvanceDays: v.number(), // can't book further out than this
+        bufferMinutes: v.number(), // enforced gap around every appointment
+      }),
+    ),
     templateId: v.optional(v.string()),
   })
     .index("by_slug", ["slug"])
@@ -80,7 +108,10 @@ export default defineSchema({
     email: v.optional(v.string()),
     title: v.optional(v.string()),
     bookable: v.boolean(),
-    serviceIds: v.optional(v.array(v.string())),
+    // Calendly-style hand-off: when set, this person books through an external
+    // link — the assistant hands the client off instead of offering internal
+    // slots, and no calendar/availability is managed here.
+    externalBookingUrl: v.optional(v.string()),
     active: v.boolean(),
     order: v.number(),
   })
@@ -106,9 +137,10 @@ export default defineSchema({
     customerName: v.string(),
     customerEmail: v.string(),
     customerPhone: v.optional(v.string()),
-    serviceId: v.optional(v.string()),
+    serviceId: v.optional(v.id("services")),
     note: v.optional(v.string()),
     cancelToken: v.string(),
+    calendarEventId: v.optional(v.string()), // event created on the staff's calendar
     source: v.union(
       v.literal("dashboard"),
       v.literal("assistant"),
@@ -119,21 +151,34 @@ export default defineSchema({
     .index("by_business_start", ["businessId", "start"])
     .index("by_cancelToken", ["cancelToken"]),
 
-  // Per-staff Google Calendar connection (OAuth tokens). One row per staff.
-  googleTokens: defineTable({
+  // Per-staff external calendar connection (Google or Microsoft). One per staff.
+  calendarConnections: defineTable({
     businessId: v.id("businesses"),
     staffId: v.id("staff"),
+    provider: v.union(v.literal("google"), v.literal("microsoft")),
     accessToken: v.string(),
     refreshToken: v.string(),
     expiryMs: v.number(),
     email: v.optional(v.string()),
-    calendarId: v.string(), // "primary"
+    calendarId: v.string(), // "primary" (Google) / "primary" placeholder (Graph /me)
   })
     .index("by_staff", ["staffId"])
     .index("by_business", ["businessId"]),
 
-  // Cached Google free/busy spans per staff — subtracted from open slots.
-  googleBusy: defineTable({
+  // Time off / holidays. `staffId` absent = the whole business is closed for
+  // the span. Blocks slot generation and booking, like a busy span.
+  blackouts: defineTable({
+    businessId: v.id("businesses"),
+    staffId: v.optional(v.id("staff")),
+    start: v.number(),
+    end: v.number(),
+    reason: v.optional(v.string()),
+  })
+    .index("by_business_start", ["businessId", "start"])
+    .index("by_staff_start", ["staffId", "start"]),
+
+  // Cached free/busy spans per staff — subtracted from open slots.
+  calendarBusy: defineTable({
     businessId: v.id("businesses"),
     staffId: v.id("staff"),
     start: v.number(),
@@ -141,6 +186,21 @@ export default defineSchema({
   })
     .index("by_staff_start", ["staffId", "start"])
     .index("by_business", ["businessId"]),
+
+  // Bookable services — what a customer books (a haircut, a color, a consult).
+  // `durationMinutes` drives the slot length; `priceCents` is optional (call-for-
+  // price / free). `staffIds` limits who performs it — empty/absent = anyone
+  // bookable. The assistant offers these by name and books the right duration.
+  services: defineTable({
+    businessId: v.id("businesses"),
+    name: v.string(),
+    durationMinutes: v.number(),
+    priceCents: v.optional(v.number()),
+    description: v.optional(v.string()),
+    staffIds: v.optional(v.array(v.id("staff"))),
+    active: v.boolean(),
+    order: v.number(),
+  }).index("by_business", ["businessId"]),
 
   // Per-staff weekly availability. One row per staff. `week` has 7 entries
   // (index 0 = Sunday); each holds open time intervals in minutes-from-midnight,
@@ -160,6 +220,25 @@ export default defineSchema({
   })
     .index("by_business", ["businessId"])
     .index("by_staff", ["staffId"]),
+
+  // Leads — captured interest (from the assistant, widget, or entered by hand).
+  // A simple pipeline: new → contacted → qualified → won/lost. `notes` is a
+  // free-text internal scratchpad; `assignedStaffId` optionally routes ownership.
+  leads: defineTable({
+    businessId: v.id("businesses"),
+    name: v.string(),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    message: v.optional(v.string()), // what the lead asked about
+    serviceId: v.optional(v.id("services")), // service they showed interest in
+    assignedStaffId: v.optional(v.id("staff")),
+    status: leadStatusValidator,
+    source: contactSourceValidator,
+    notes: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_business", ["businessId"])
+    .index("by_business_status", ["businessId", "status"]),
 
   // Per-tenant business knowledge — the assistant's source of truth. One row
   // per business; edited in the dashboard, injected into the Leo system prompt.

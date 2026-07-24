@@ -156,14 +156,14 @@ test("reschedule — moves the booking and frees the old slot", async () => {
   expect(starts).not.toContain(START + HOUR); // 10:00 now taken
 });
 
-test("google busy — an external busy span blocks the slot", async () => {
+test("calendar busy — an external busy span blocks the slot", async () => {
   const { t, as, staffId } = await setup();
   await t.run(async (ctx) => {
     const business = await ctx.db
       .query("businesses")
       .withIndex("by_slug", (q) => q.eq("slug", "clip"))
       .unique();
-    await ctx.db.insert("googleBusy", {
+    await ctx.db.insert("calendarBusy", {
       businessId: business!._id,
       staffId,
       start: START,
