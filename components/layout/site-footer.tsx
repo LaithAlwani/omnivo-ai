@@ -68,13 +68,13 @@ export function SiteFooter() {
             &copy; {new Date().getFullYear()} {company.name}. All rights reserved.
           </p>
           <div className="flex items-center gap-6">
-            <Link href="#" className="transition-colors hover:text-bone-dim">
+            <Link href="/privacy" className="transition-colors hover:text-bone-dim">
               Privacy
             </Link>
-            <Link href="#" className="transition-colors hover:text-bone-dim">
+            <Link href="/terms" className="transition-colors hover:text-bone-dim">
               Terms
             </Link>
-            <span className="font-mono">Built with AI Engine</span>
+            <span className="font-mono">Built with {company.name}</span>
           </div>
         </div>
       </div>

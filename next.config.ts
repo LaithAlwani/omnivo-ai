@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Trim the X-Powered-By response header — no need to advertise the framework.
+  poweredByHeader: false,
   async headers() {
     return [
       {
@@ -21,6 +23,17 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "Access-Control-Allow-Origin", value: "*" },
           { key: "Cache-Control", value: "public, max-age=300" },
+        ],
+      },
+      {
+        // Brand/logo assets are content-hashed by name and never change — let
+        // browsers and CDNs cache them for a year.
+        source: "/logos/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
         ],
       },
     ];

@@ -69,7 +69,7 @@ export default function SignInPage() {
         <p className="mt-2 text-sm text-muted">
           {flow === "signUp"
             ? "Start building your AI assistant in minutes."
-            : "Sign in to your AI Engine dashboard."}
+            : "Sign in to your Omni AI dashboard."}
         </p>
 
         <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-3">

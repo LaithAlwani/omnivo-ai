@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
+  <title>Omnivo AI</title>
+  <defs><radialGradient id="ember32" cx="38%" cy="32%" r="72%">
+      <stop offset="0" stop-color="#FF8A52"></stop><stop offset="0.62" stop-color="#F0522A"></stop><stop offset="1" stop-color="#D93C16"></stop>
+    </radialGradient></defs>
+  <circle cx="16" cy="16" r="14.4" stroke="#6E767F" stroke-width="3.2"></circle>
+  <circle cx="16" cy="16" r="7.2" fill="url(#ember32)"></circle>
+</svg>

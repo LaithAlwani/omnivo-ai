@@ -22,13 +22,14 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://aiengine.dev"),
+  metadataBase: new URL("https://omnivoai.ca"),
   title: {
-    default: "AI Engine — an AI assistant that chats, books, and captures leads",
-    template: "%s · AI Engine",
+    default: "Omni AI — an AI assistant that chats, books, and captures leads",
+    template: "%s · Omni AI",
   },
   description:
     "Deploy an AI assistant that chats with visitors, books appointments, and captures leads on your site. Paste one snippet — it goes live in minutes.",
+  applicationName: "Omni AI",
   keywords: [
     "AI assistant",
     "AI chatbot for business",
@@ -37,12 +38,37 @@ export const metadata: Metadata = {
     "embeddable AI widget",
     "AI receptionist",
   ],
+  authors: [{ name: "Omni AI" }],
+  creator: "Omni AI",
+  publisher: "Omni AI",
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
-    title: "AI Engine — an AI assistant that chats, books, and captures leads",
+    title: "Omni AI — an AI assistant that chats, books, and captures leads",
     description:
       "Paste one snippet. An AI assistant that answers, books, and captures leads goes live on your site.",
+    url: "/",
     type: "website",
-    siteName: "AI Engine",
+    siteName: "Omni AI",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Omni AI — an AI assistant that chats, books, and captures leads",
+    description:
+      "Paste one snippet. An AI assistant that answers, books, and captures leads goes live on your site.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
   },
 };
 

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 export const metadata: Metadata = {
   title: "Book a demo",
   description:
-    "See AI Engine answer, book, and capture a lead with your own business. A fifteen-minute walkthrough.",
+    "See Omni AI answer, book, and capture a lead with your own business. A fifteen-minute walkthrough.",
 };
 
 // Phase M placeholder. The real booking flow (calendar + slots) ships in Phase 2.

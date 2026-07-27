@@ -7,7 +7,6 @@ import {
   motion,
   useScroll,
   useMotionValueEvent,
-  useReducedMotion,
 } from "motion/react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
@@ -17,24 +16,16 @@ import { useActiveSection } from "@/lib/use-active-section";
 const sectionIds = ["tools", "how", "pricing", "faq"];
 
 export function SiteHeader() {
-  const reduce = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
-  const [hidden, setHidden] = useState(false);
   const [open, setOpen] = useState(false);
   const active = useActiveSection(sectionIds);
 
   const { scrollY, scrollYProgress } = useScroll();
 
-  // Direction-aware: hide when scrolling down past the fold, reveal on scroll up.
+  // The header stays pinned at all times; we only track scroll depth to swap in
+  // the blurred backdrop once past the fold.
   useMotionValueEvent(scrollY, "change", (y) => {
-    const prev = scrollY.getPrevious() ?? 0;
     setScrolled(y > 24);
-    if (open) {
-      setHidden(false);
-      return;
-    }
-    if (y > prev && y > 160) setHidden(true);
-    else if (y < prev) setHidden(false);
   });
 
   // Lock scroll while the mobile sheet is open.
@@ -54,12 +45,7 @@ export function SiteHeader() {
         className="fixed inset-x-0 top-0 z-60 h-0.5 origin-left bg-linear-to-r from-ember-deep via-ember to-flare"
       />
 
-      <motion.header
-        initial={false}
-        animate={{ y: hidden && !reduce ? "-100%" : "0%" }}
-        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-        className="fixed inset-x-0 top-0 z-50"
-      >
+      <header className="fixed inset-x-0 top-0 z-50">
         <div
           className={`transition-all duration-300 ${
             scrolled || open
@@ -104,7 +90,7 @@ export function SiteHeader() {
               <Button
                 href={company.primaryCta.href}
                 size="md"
-                className="hidden sm:inline-flex"
+                className="hidden md:inline-flex"
               >
                 {company.primaryCta.label}
               </Button>
@@ -135,7 +121,7 @@ export function SiteHeader() {
             </div>
           </div>
         </div>
-      </motion.header>
+      </header>
 
       <AnimatePresence>
         {open && (

@@ -1,16 +1,16 @@
 (function () {
   "use strict";
 
-  // AI Engine embeddable widget loader. Paste one <script> tag; this injects a
+  // Omni AI embeddable widget loader. Paste one <script> tag; this injects a
   // floating launcher button + an iframe hosting the branded chat. The iframe
-  // runs on the AI Engine origin, so it talks to the backend same-origin; the
+  // runs on the Omni AI origin, so it talks to the backend same-origin; the
   // tenant is identified by the publishable embed key.
   var script = document.currentScript;
   if (!script) return;
 
   var key = script.getAttribute("data-embed-key");
   if (!key) {
-    console.error("[AI Engine] widget.js: missing data-embed-key");
+    console.error("[Omni AI] widget.js: missing data-embed-key");
     return;
   }
   var color = script.getAttribute("data-color") || "#111827";

@@ -188,7 +188,7 @@ export default function EmbedWidget() {
           </button>
         </div>
         <p className="mt-1.5 text-center text-[10px] text-gray-400">
-          Powered by AI Engine
+          Powered by Omni AI
         </p>
       </div>
     </div>
