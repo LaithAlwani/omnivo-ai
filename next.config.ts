@@ -36,6 +36,13 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // The portal host is a private app, not marketing — keep it out of
+        // search indexes entirely.
+        source: "/:path*",
+        has: [{ type: "host", value: "app.omnivoai.ca" }],
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
     ];
   },
 };

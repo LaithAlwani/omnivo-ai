@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { appBaseUrl } from "@/lib/site-config";
 
 type Variant = "primary" | "ghost" | "quiet";
 
@@ -35,7 +36,10 @@ export function Button({
   size?: keyof typeof sizes;
   className?: string;
 } & React.ComponentProps<typeof Link>) {
-  const external = href.startsWith("http");
+  // Our own app host is a different origin but not "external" — it should open
+  // in the same tab, not a new one.
+  const isAppLink = appBaseUrl !== "" && href.startsWith(appBaseUrl);
+  const external = href.startsWith("http") && !isAppLink;
   return (
     <Link
       href={href}

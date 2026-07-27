@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import {
   action,
   internalMutation,
+  internalQuery,
   mutation,
   query,
 } from "./_generated/server";
@@ -254,9 +255,57 @@ async function bookCore(
 
   // Best-effort: write the appointment onto the staff's connected calendar.
   await ctx.scheduler.runAfter(0, internal.calendar.pushEvent, { bookingId });
+  // Best-effort: text the customer a confirmation (tier-gated + phone-gated
+  // inside the action, so it's a no-op when SMS isn't applicable).
+  await ctx.scheduler.runAfter(0, internal.sms.sendBookingConfirmation, {
+    bookingId,
+  });
 
   return { bookingId, staffId, start: args.start, end };
 }
+
+// Hydrated context an SMS action needs to compose a confirmation/reminder.
+// Actions have no `ctx.db`, so they read this instead of the raw tables.
+export const notificationContext = internalQuery({
+  args: { bookingId: v.id("bookings") },
+  returns: v.union(
+    v.null(),
+    v.object({
+      status: v.union(v.literal("confirmed"), v.literal("cancelled")),
+      start: v.number(),
+      customerName: v.string(),
+      customerPhone: v.union(v.string(), v.null()),
+      businessName: v.string(),
+      tier: v.union(
+        v.literal("starter"),
+        v.literal("professional"),
+        v.literal("enterprise"),
+      ),
+      timezone: v.union(v.string(), v.null()),
+      staffName: v.union(v.string(), v.null()),
+      serviceName: v.union(v.string(), v.null()),
+    }),
+  ),
+  handler: async (ctx, { bookingId }) => {
+    const bk = await ctx.db.get(bookingId);
+    if (!bk) return null;
+    const business = await ctx.db.get(bk.businessId);
+    if (!business) return null;
+    const staff = await ctx.db.get(bk.staffId);
+    const service = bk.serviceId ? await ctx.db.get(bk.serviceId) : null;
+    return {
+      status: bk.status,
+      start: bk.start,
+      customerName: bk.customerName,
+      customerPhone: bk.customerPhone ?? null,
+      businessName: business.name,
+      tier: business.tier,
+      timezone: business.timezone ?? null,
+      staffName: staff?.name ?? null,
+      serviceName: service?.name ?? null,
+    };
+  },
+});
 
 const bookingCoreArgs = {
   staffId: v.union(v.id("staff"), v.literal("any")),

@@ -1,6 +1,6 @@
 import { Reveal } from "@/components/ui/reveal";
 import { Button } from "@/components/ui/button";
-import { company } from "@/lib/site-config";
+import { company, appHref } from "@/lib/site-config";
 
 export function ContactSection() {
   return (
@@ -28,7 +28,7 @@ export function ContactSection() {
                 <Button href={company.primaryCta.href} size="lg">
                   {company.primaryCta.label}
                 </Button>
-                <Button href="/dashboard" variant="ghost" size="lg">
+                <Button href={appHref("/dashboard")} variant="ghost" size="lg">
                   Start free trial
                 </Button>
               </div>

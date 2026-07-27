@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/layout/logo";
-import { company } from "@/lib/site-config";
+import { company, appHref } from "@/lib/site-config";
 
 const columns = [
   {
@@ -27,7 +27,7 @@ const columns = [
       { label: "Book a demo", href: "/book" },
       { label: "FAQ", href: "/#faq" },
       { label: "Contact", href: "/#contact" },
-      { label: "Sign in", href: "/dashboard" },
+      { label: "Sign in", href: appHref("/dashboard") },
     ],
   },
 ];

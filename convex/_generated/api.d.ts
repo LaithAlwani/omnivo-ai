@@ -17,6 +17,7 @@ import type * as blackouts from "../blackouts.js";
 import type * as bookings from "../bookings.js";
 import type * as businesses from "../businesses.js";
 import type * as calendar from "../calendar.js";
+import type * as crons from "../crons.js";
 import type * as emailNode from "../emailNode.js";
 import type * as embedKeys from "../embedKeys.js";
 import type * as http from "../http.js";
@@ -36,6 +37,7 @@ import type * as public_ from "../public.js";
 import type * as publicChat from "../publicChat.js";
 import type * as services from "../services.js";
 import type * as slots from "../slots.js";
+import type * as sms from "../sms.js";
 import type * as staff from "../staff.js";
 import type * as team from "../team.js";
 
@@ -55,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   bookings: typeof bookings;
   businesses: typeof businesses;
   calendar: typeof calendar;
+  crons: typeof crons;
   emailNode: typeof emailNode;
   embedKeys: typeof embedKeys;
   http: typeof http;
@@ -74,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   publicChat: typeof publicChat;
   services: typeof services;
   slots: typeof slots;
+  sms: typeof sms;
   staff: typeof staff;
   team: typeof team;
 }>;

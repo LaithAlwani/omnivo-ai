@@ -23,6 +23,13 @@ export const company = {
   secondaryCta: { label: "See how it works", href: "/#how" },
 } as const;
 
+// In production the portal lives on its own host (app.omnivoai.ca), set via
+// NEXT_PUBLIC_APP_URL. When present, portal links point straight at it so
+// marketing → portal navigation skips the middleware redirect hop. On localhost
+// and previews the var is unset, so links stay relative and path-based.
+export const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+export const appHref = (path: string) => `${appBaseUrl}${path}`;
+
 export const nav: NavItem[] = [
   { label: "Platform", href: "/#tools" },
   { label: "How it works", href: "/#how" },

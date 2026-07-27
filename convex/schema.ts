@@ -141,6 +141,9 @@ export default defineSchema({
     note: v.optional(v.string()),
     cancelToken: v.string(),
     calendarEventId: v.optional(v.string()), // event created on the staff's calendar
+    // Set when the SMS reminder is dispatched, so the reminder cron sends exactly
+    // once per booking (idempotency guard — patched before the send is scheduled).
+    reminderSentAt: v.optional(v.number()),
     source: v.union(
       v.literal("dashboard"),
       v.literal("assistant"),
