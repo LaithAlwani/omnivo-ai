@@ -3,10 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useAction } from "convex/react";
-import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
 import { errorText } from "@/lib/errors";
-import { Logo } from "@/components/layout/logo";
+import { AppShell, SidebarLink } from "@/components/app/app-shell";
 
 function slugify(s: string) {
   return s
@@ -18,7 +17,6 @@ function slugify(s: string) {
 }
 
 export default function DashboardHome() {
-  const { signOut } = useAuthActions();
   const businesses = useQuery(api.businesses.listMine);
   const createBusiness = useAction(api.businesses.create);
 
@@ -47,18 +45,14 @@ export default function DashboardHome() {
   }
 
   return (
-    <div className="min-h-dvh">
-      <header className="flex items-center justify-between border-b border-line px-6 py-4">
-        <Logo />
-        <button
-          onClick={() => void signOut()}
-          className="text-sm text-muted transition-colors hover:text-bone"
-        >
-          Sign out
-        </button>
-      </header>
-
-      <main className="mx-auto max-w-3xl px-6 py-12">
+    <AppShell
+      nav={
+        <SidebarLink href="/dashboard" active>
+          Businesses
+        </SidebarLink>
+      }
+    >
+      <div className="mx-auto max-w-3xl">
         <h1 className="font-display text-4xl text-bone">Your businesses</h1>
         <p className="mt-2 text-muted">
           Each business is an isolated tenant — its data is visible only to its
@@ -143,7 +137,7 @@ export default function DashboardHome() {
             {pending ? "Creating…" : "Create business"}
           </button>
         </form>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }

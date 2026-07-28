@@ -35,6 +35,7 @@ import type * as passwordReset from "../passwordReset.js";
 import type * as platform from "../platform.js";
 import type * as public_ from "../public.js";
 import type * as publicChat from "../publicChat.js";
+import type * as rateLimiter from "../rateLimiter.js";
 import type * as services from "../services.js";
 import type * as slots from "../slots.js";
 import type * as sms from "../sms.js";
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   platform: typeof platform;
   public: typeof public_;
   publicChat: typeof publicChat;
+  rateLimiter: typeof rateLimiter;
   services: typeof services;
   slots: typeof slots;
   sms: typeof sms;
@@ -108,4 +110,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+};

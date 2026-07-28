@@ -13,6 +13,7 @@ export type AppErrorCode =
   | "CONFLICT" // duplicate / invariant violation
   | "INVALID_INPUT" // bad argument the user can fix
   | "INVALID_CREDENTIALS" // wrong password / bad token
+  | "RATE_LIMITED" // too many requests — back off and retry
   | "CONFIG"; // server misconfiguration (operator-facing)
 
 export function appError(code: AppErrorCode, message: string): never {

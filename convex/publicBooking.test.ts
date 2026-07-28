@@ -2,6 +2,7 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
+import { register as registerRateLimiter } from "@convex-dev/rate-limiter/test";
 import schema from "./schema";
 import { generateEmbedKey } from "./lib/keys";
 
@@ -12,6 +13,7 @@ const START = Date.UTC(2030, 5, 3, 9, 0);
 
 async function setup() {
   const t = convexTest(schema, modules);
+  registerRateLimiter(t, "rateLimiter");
   const owner = await t.run((ctx) => ctx.db.insert("users", { email: "owner@x.com" }));
   const as = t.withIdentity({ subject: `${owner}|s` });
 

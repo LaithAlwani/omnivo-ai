@@ -51,12 +51,18 @@ export const remindBusiness = internalMutation({
 
     for (const bk of rows) {
       if (bk.status !== "confirmed") continue;
-      if (!bk.customerPhone) continue;
       if (bk.reminderSentAt) continue;
-      // Claim it in this transaction *before* scheduling the send, so an
-      // overlapping tick can't double-text (the send action re-checks gates).
+      // customerEmail is always present; this is just defensive.
+      if (!bk.customerPhone && !bk.customerEmail) continue;
+      // Claim it in this transaction *before* scheduling the sends, so an
+      // overlapping tick can't double-notify. Fan out to both channels — each
+      // send action re-checks its own gates (SMS is tier + phone gated; email
+      // needs a present address + configured SMTP).
       await ctx.db.patch(bk._id, { reminderSentAt: now });
       await ctx.scheduler.runAfter(0, internal.sms.sendBookingReminder, {
+        bookingId: bk._id,
+      });
+      await ctx.scheduler.runAfter(0, internal.emailNode.sendBookingReminder, {
         bookingId: bk._id,
       });
     }

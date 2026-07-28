@@ -260,6 +260,11 @@ async function bookCore(
   await ctx.scheduler.runAfter(0, internal.sms.sendBookingConfirmation, {
     bookingId,
   });
+  // Every booking also gets an email confirmation (no tier gate) — the action
+  // self-gates on a present email + configured SMTP.
+  await ctx.scheduler.runAfter(0, internal.emailNode.sendBookingConfirmation, {
+    bookingId,
+  });
 
   return { bookingId, staffId, start: args.start, end };
 }
@@ -275,6 +280,7 @@ export const notificationContext = internalQuery({
       start: v.number(),
       customerName: v.string(),
       customerPhone: v.union(v.string(), v.null()),
+      customerEmail: v.string(),
       businessName: v.string(),
       tier: v.union(
         v.literal("starter"),
@@ -298,6 +304,7 @@ export const notificationContext = internalQuery({
       start: bk.start,
       customerName: bk.customerName,
       customerPhone: bk.customerPhone ?? null,
+      customerEmail: bk.customerEmail,
       businessName: business.name,
       tier: business.tier,
       timezone: business.timezone ?? null,

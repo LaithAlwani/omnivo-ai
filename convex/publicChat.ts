@@ -7,6 +7,7 @@ import { internal } from "./_generated/api";
 import { buildSystemPrompt } from "./lib/leoPrompt";
 import { appError } from "./lib/errors";
 import { verifyKey } from "./public";
+import { enforceLimit } from "./rateLimiter";
 
 // -----------------------------------------------------------------------------
 // Public assistant chat with booking + lead tools. Embed-key authed (no login),
@@ -92,6 +93,8 @@ export const chat = action({
     }
 
     const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
+    // Per-tenant guard on the expensive AI path before we touch the model.
+    await enforceLimit(ctx, "widgetChat", businessId);
     const context = await ctx.runQuery(internal.assistantContext.getForBusiness, {
       businessId,
     });

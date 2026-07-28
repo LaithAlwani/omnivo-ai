@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { appError } from "./lib/errors";
 import { randomHex, sha256Hex } from "./lib/keys";
+import { enforceLimit } from "./rateLimiter";
 
 // -----------------------------------------------------------------------------
 // Public surface for the embeddable widget + assistant. There is NO dashboard
@@ -197,6 +198,7 @@ export const book = action({
     cancelToken: string;
   }> => {
     const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
+    await enforceLimit(ctx, "widgetBooking", businessId);
     const cancelToken = randomHex(16);
     const res = await ctx.runMutation(internal.bookings.createForBusiness, {
       businessId,
@@ -227,6 +229,7 @@ export const captureLead = action({
   returns: v.object({ leadId: v.id("leads") }),
   handler: async (ctx, args): Promise<{ leadId: Id<"leads"> }> => {
     const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
+    await enforceLimit(ctx, "widgetLead", businessId);
     const leadId = await ctx.runMutation(internal.leads.captureForBusiness, {
       businessId,
       source: "widget",
