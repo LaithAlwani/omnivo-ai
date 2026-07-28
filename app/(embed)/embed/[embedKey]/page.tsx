@@ -25,6 +25,14 @@ export default function EmbedWidget() {
   const loadConfig = useAction(api.public.config);
   const chat = useAction(api.publicChat.chat);
 
+  // One opaque session id per widget open — groups this visitor's turns into a
+  // single conversation for analytics/usage (no PII, resets on reload).
+  const [conversationId] = useState(() =>
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `c_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+  );
+
   const [config, setConfig] = useState<Config | null>(null);
   const [failed, setFailed] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -63,6 +71,7 @@ export default function EmbedWidget() {
       const { reply } = await chat({
         embedKey,
         origin,
+        conversationId,
         messages: next.map((m) => ({ role: m.role, content: m.content })),
       });
       setMessages((m) => [...m, { role: "assistant", content: reply }]);

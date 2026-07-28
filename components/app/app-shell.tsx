@@ -8,6 +8,7 @@ import { useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
 import { Logo } from "@/components/layout/logo";
+import { Scroller } from "@/components/ui/scroller";
 
 export type PlatformRole = "support" | "superadmin";
 
@@ -79,10 +80,9 @@ export function AppShell({
         </span>
       )}
 
-      {/* Section links scroll if they outgrow the rail; the actions stay pinned. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
-        {nav}
-      </div>
+      {/* Section links scroll (custom orange oval thumb) if they outgrow the
+          rail; the actions below stay pinned. */}
+      <Scroller className="flex flex-col gap-0.5">{nav}</Scroller>
 
       <div className="mt-3 flex shrink-0 flex-col gap-1 border-t border-line pt-3">
         {/* Cross-plane link: from the app it points into the platform portal;

@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as analytics from "../analytics.js";
 import type * as assistant from "../assistant.js";
 import type * as assistantContext from "../assistantContext.js";
 import type * as assistantTools from "../assistantTools.js";
@@ -17,6 +18,7 @@ import type * as blackouts from "../blackouts.js";
 import type * as bookings from "../bookings.js";
 import type * as businesses from "../businesses.js";
 import type * as calendar from "../calendar.js";
+import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as emailNode from "../emailNode.js";
 import type * as embedKeys from "../embedKeys.js";
@@ -31,6 +33,7 @@ import type * as lib_errors from "../lib/errors.js";
 import type * as lib_keys from "../lib/keys.js";
 import type * as lib_leoPrompt from "../lib/leoPrompt.js";
 import type * as lib_slots from "../lib/slots.js";
+import type * as lib_tiers from "../lib/tiers.js";
 import type * as passwordReset from "../passwordReset.js";
 import type * as platform from "../platform.js";
 import type * as public_ from "../public.js";
@@ -41,6 +44,8 @@ import type * as slots from "../slots.js";
 import type * as sms from "../sms.js";
 import type * as staff from "../staff.js";
 import type * as team from "../team.js";
+import type * as tiers from "../tiers.js";
+import type * as usage from "../usage.js";
 
 import type {
   ApiFromModules,
@@ -49,6 +54,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  analytics: typeof analytics;
   assistant: typeof assistant;
   assistantContext: typeof assistantContext;
   assistantTools: typeof assistantTools;
@@ -58,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   bookings: typeof bookings;
   businesses: typeof businesses;
   calendar: typeof calendar;
+  conversations: typeof conversations;
   crons: typeof crons;
   emailNode: typeof emailNode;
   embedKeys: typeof embedKeys;
@@ -72,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   "lib/keys": typeof lib_keys;
   "lib/leoPrompt": typeof lib_leoPrompt;
   "lib/slots": typeof lib_slots;
+  "lib/tiers": typeof lib_tiers;
   passwordReset: typeof passwordReset;
   platform: typeof platform;
   public: typeof public_;
@@ -82,6 +90,8 @@ declare const fullApi: ApiFromModules<{
   sms: typeof sms;
   staff: typeof staff;
   team: typeof team;
+  tiers: typeof tiers;
+  usage: typeof usage;
 }>;
 
 /**

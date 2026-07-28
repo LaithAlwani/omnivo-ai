@@ -276,6 +276,28 @@ export default defineSchema({
     .index("by_tokenHash", ["tokenHash"])
     .index("by_user", ["userId"]),
 
+  // Widget chat sessions — metadata only (no transcripts, to avoid storing PII).
+  // One row per client session (`conversationKey`); message turns bump the
+  // counter. Powers the Conversations metric and, later, per-plan usage caps.
+  conversations: defineTable({
+    businessId: v.id("businesses"),
+    conversationKey: v.string(), // opaque session id minted by the widget
+    messageCount: v.number(),
+    lastMessageAt: v.number(),
+  })
+    .index("by_business", ["businessId"])
+    .index("by_business_key", ["businessId", "conversationKey"]),
+
+  // Per-business monthly usage counters (one row per "YYYY-MM"). Incremented when
+  // a new conversation opens; read to enforce plan caps in O(1) instead of
+  // scanning the conversations table on every check.
+  usageCounters: defineTable({
+    businessId: v.id("businesses"),
+    period: v.string(), // "YYYY-MM" (UTC)
+    conversations: v.number(),
+    sms: v.optional(v.number()),
+  }).index("by_business_period", ["businessId", "period"]),
+
   // Audit trail for platform-admin cross-tenant actions + sensitive business ops.
   auditLog: defineTable({
     actorUserId: v.id("users"),

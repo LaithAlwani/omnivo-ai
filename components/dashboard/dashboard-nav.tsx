@@ -15,6 +15,7 @@ function navItems(slug: string) {
     { label: "Leads", href: `/dashboard/${slug}/leads`, exact: false },
     { label: "Knowledge", href: `/dashboard/${slug}/knowledge`, exact: false },
     { label: "Assistant", href: `/dashboard/${slug}/assistant`, exact: false },
+    { label: "Usage", href: `/dashboard/${slug}/usage`, exact: false },
   ];
 }
 

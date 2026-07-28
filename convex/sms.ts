@@ -4,6 +4,7 @@ import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { appError } from "./lib/errors";
+import { smsEnabled, usagePeriod } from "./lib/tiers";
 
 // -----------------------------------------------------------------------------
 // Transactional SMS (Twilio REST). A single *platform* Twilio account sends for
@@ -23,11 +24,8 @@ import { appError } from "./lib/errors";
 // keeps this file free of Node built-ins and safe to colocate with the actions.
 // -----------------------------------------------------------------------------
 
-// SMS is a paid-plan feature (Professional and up) — enforced server-side, never
-// trusted from the client.
-function smsEnabled(tier: "starter" | "professional" | "enterprise"): boolean {
-  return tier !== "starter";
-}
+// SMS is a paid-plan feature (Professional and up) — gated centrally in
+// lib/tiers and enforced server-side, never trusted from the client.
 
 // Best-effort E.164 normalization. Returns null when we can't be confident, so
 // we skip rather than hand Twilio a number it will reject.
@@ -141,6 +139,13 @@ async function notifyBooking(
   const to = toE164(info.customerPhone);
   if (!to) return null;
 
+  // Enforce the plan's monthly SMS cap.
+  const { over } = await ctx.runQuery(internal.usage.smsCapStatus, {
+    businessId: info.businessId,
+    period: usagePeriod(Date.now()),
+  });
+  if (over) return null;
+
   const when = formatWhen(info.start, info.timezone);
   const withWhom = info.staffName ? ` with ${info.staffName}` : "";
   const what = info.serviceName ? ` (${info.serviceName})` : "";
@@ -151,6 +156,9 @@ async function notifyBooking(
       : `Reminder from ${info.businessName}: your appointment${what} is ${when}${withWhom}. See you soon!`;
 
   await sendSms(to, body);
+  await ctx.runMutation(internal.usage.recordSms, {
+    businessId: info.businessId,
+  });
   return null;
 }
 

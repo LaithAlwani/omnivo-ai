@@ -8,6 +8,7 @@ import { buildSystemPrompt } from "./lib/leoPrompt";
 import { appError } from "./lib/errors";
 import { verifyKey } from "./public";
 import { enforceLimit } from "./rateLimiter";
+import { usagePeriod } from "./lib/tiers";
 
 // -----------------------------------------------------------------------------
 // Public assistant chat with booking + lead tools. Embed-key authed (no login),
@@ -80,6 +81,7 @@ export const chat = action({
   args: {
     embedKey: v.string(),
     origin: v.optional(v.string()),
+    conversationId: v.optional(v.string()),
     messages: v.array(messageValidator),
   },
   returns: v.object({ reply: v.string() }),
@@ -95,6 +97,33 @@ export const chat = action({
     const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
     // Per-tenant guard on the expensive AI path before we touch the model.
     await enforceLimit(ctx, "widgetChat", businessId);
+
+    // Plan enforcement: a new conversation (first user turn) is refused once the
+    // tenant is over its monthly cap. Existing conversations continue. We degrade
+    // to a polite message rather than an error so the widget stays graceful.
+    const isNewConversation =
+      args.messages.filter((m) => m.role === "user").length <= 1;
+    if (isNewConversation) {
+      const { over } = await ctx.runQuery(
+        internal.tiers.conversationCapStatus,
+        { businessId, period: usagePeriod(Date.now()) },
+      );
+      if (over) {
+        return {
+          reply:
+            "Thanks for reaching out! We're unable to chat right now — please contact us by email or phone and we'll get back to you shortly.",
+        };
+      }
+    }
+
+    // Track the conversation turn (metadata only) for analytics + usage. Fire-
+    // and-forget so it never blocks or fails the reply.
+    if (args.conversationId) {
+      await ctx.scheduler.runAfter(0, internal.conversations.record, {
+        businessId,
+        conversationKey: args.conversationId,
+      });
+    }
     const context = await ctx.runQuery(internal.assistantContext.getForBusiness, {
       businessId,
     });

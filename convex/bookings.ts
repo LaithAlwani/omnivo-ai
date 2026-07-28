@@ -276,6 +276,7 @@ export const notificationContext = internalQuery({
   returns: v.union(
     v.null(),
     v.object({
+      businessId: v.id("businesses"),
       status: v.union(v.literal("confirmed"), v.literal("cancelled")),
       start: v.number(),
       customerName: v.string(),
@@ -300,6 +301,7 @@ export const notificationContext = internalQuery({
     const staff = await ctx.db.get(bk.staffId);
     const service = bk.serviceId ? await ctx.db.get(bk.serviceId) : null;
     return {
+      businessId: bk.businessId,
       status: bk.status,
       start: bk.start,
       customerName: bk.customerName,
