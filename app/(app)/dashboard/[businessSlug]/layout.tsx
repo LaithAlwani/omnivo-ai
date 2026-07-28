@@ -65,17 +65,11 @@ export default function BusinessDashboardLayout({
             <span className="hidden text-faint sm:inline">/</span>
             <BusinessSwitcher currentSlug={businessSlug} />
           </div>
-          <button
-            onClick={() => void signOut()}
-            className="shrink-0 text-sm text-muted transition-colors hover:text-bone"
-          >
-            Sign out
-          </button>
         </header>
 
         <div className="flex min-h-0 flex-1">
-          <aside className="hidden w-56 shrink-0 border-r border-line p-4 md:block">
-            <DashboardNav slug={businessSlug} />
+          <aside className="hidden w-56 shrink-0 border-r border-line p-4 md:flex md:flex-col">
+            <DashboardNav slug={businessSlug} onSignOut={() => void signOut()} />
           </aside>
           <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8">
             {children}
@@ -114,7 +108,7 @@ export default function BusinessDashboardLayout({
                   </svg>
                 </button>
               </div>
-              <DashboardNav slug={businessSlug} />
+              <DashboardNav slug={businessSlug} onSignOut={() => void signOut()} />
             </motion.aside>
           </div>
         )}

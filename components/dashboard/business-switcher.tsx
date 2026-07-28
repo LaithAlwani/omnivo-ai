@@ -30,7 +30,7 @@ export function BusinessSwitcher({ currentSlug }: { currentSlug: string }) {
             aria-hidden
             tabIndex={-1}
           />
-          <div className="absolute left-0 top-full z-20 mt-1.5 w-60 rounded-xl border border-line-strong bg-surface p-1.5 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)]">
+          <div className="absolute left-0 top-full z-20 mt-1.5 w-60 rounded-xl border border-line-strong bg-surface p-1.5 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] max-sm:fixed max-sm:inset-x-3 max-sm:top-17 max-sm:mt-0 max-sm:w-auto">
             {businesses?.map((b) => (
               <Link
                 key={b._id}

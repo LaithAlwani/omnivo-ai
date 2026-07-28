@@ -245,7 +245,7 @@ export const pushEvent = internalAction({
         startMs: data.start,
         endMs: data.end,
         summary: `${data.customerName} — ${data.businessName}`,
-        description: `Booked via Omni AI.\nCustomer: ${data.customerEmail}`,
+        description: `Booked via Omnivo AI.\nCustomer: ${data.customerEmail}`,
       },
     );
     await ctx.runMutation(internal.calendar.setBookingEvent, {

@@ -4,7 +4,7 @@ import { ImageResponse } from "next/og";
 // for both Open Graph and Twitter (Next falls back to this when no twitter-image
 // is present). Drawn with primitives so it stays self-contained — no asset fetch.
 export const alt =
-  "Omni AI — an AI assistant that chats, books, and captures leads";
+  "Omnivo AI — an AI assistant that chats, books, and captures leads";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -55,7 +55,7 @@ export default function OpengraphImage() {
               letterSpacing: "-0.02em",
             }}
           >
-            Omni AI
+            Omnivo AI
           </div>
         </div>
 

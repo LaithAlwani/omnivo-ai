@@ -8,13 +8,13 @@ import type {
 } from "@/lib/types";
 
 // -----------------------------------------------------------------------------
-// Omni AI — marketing content (Phase M seed).
+// Omnivo AI — marketing content (Phase M seed).
 // In Phase 1 this becomes a template blueprint; per-business content comes from
 // Convex. Nothing here is read by the AI at runtime.
 // -----------------------------------------------------------------------------
 
 export const company = {
-  name: "Omni AI",
+  name: "Omnivo AI",
   eyebrow: "The AI engine for small business",
   heroHeadline: "An assistant that answers, books, and captures leads.",
   heroLead:
@@ -206,7 +206,7 @@ export const plans: Plan[] = [
 
 export const seo = {
   title:
-    "Omni AI — an AI assistant that chats, books, and captures leads",
+    "Omnivo AI — an AI assistant that chats, books, and captures leads",
   description:
     "Deploy an AI assistant that answers questions, books appointments, and captures leads on your site. Paste one snippet — it goes live in minutes.",
 };

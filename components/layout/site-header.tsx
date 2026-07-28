@@ -10,7 +10,7 @@ import {
 } from "motion/react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
-import { nav, company } from "@/lib/site-config";
+import { nav, company, appHref } from "@/lib/site-config";
 import { useActiveSection } from "@/lib/use-active-section";
 
 const sectionIds = ["tools", "how", "pricing", "faq"];
@@ -56,7 +56,7 @@ export function SiteHeader() {
           <div className="shell flex h-16 items-center justify-between">
             <Logo />
 
-            <nav className="hidden items-center gap-1 md:flex">
+            <nav className="hidden items-center gap-1 lg:flex">
               {nav.map((item) => {
                 const id = item.href.split("#")[1];
                 const isActive = id === active;
@@ -64,7 +64,7 @@ export function SiteHeader() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`group relative px-3.5 py-2 text-sm transition-colors ${
+                    className={`group relative whitespace-nowrap px-3.5 py-2 text-sm transition-colors ${
                       isActive ? "text-bone" : "text-bone-dim hover:text-bone"
                     }`}
                   >
@@ -87,16 +87,28 @@ export function SiteHeader() {
             </nav>
 
             <div className="flex items-center gap-2">
-              <Button
-                href={company.primaryCta.href}
-                size="md"
-                className="hidden md:inline-flex"
-              >
-                {company.primaryCta.label}
-              </Button>
+              {/* Desktop CTAs — wrapper carries the visibility so `hidden`
+                  reliably beats the Button's base `inline-flex`. */}
+              <div className="hidden items-center gap-2 lg:flex">
+                <Button
+                  href={appHref("/signin")}
+                  variant="ghost"
+                  size="md"
+                  className="whitespace-nowrap"
+                >
+                  Sign in
+                </Button>
+                <Button
+                  href={company.primaryCta.href}
+                  size="md"
+                  className="whitespace-nowrap"
+                >
+                  {company.primaryCta.label}
+                </Button>
+              </div>
               <button
                 onClick={() => setOpen((v) => !v)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line text-bone md:hidden"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line text-bone lg:hidden"
                 aria-label={open ? "Close menu" : "Open menu"}
                 aria-expanded={open}
               >
@@ -130,7 +142,7 @@ export function SiteHeader() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 top-16 z-40 bg-ink/95 backdrop-blur-xl md:hidden"
+            className="fixed inset-0 top-16 z-40 bg-ink/95 backdrop-blur-xl lg:hidden"
           >
             <nav className="shell flex flex-col gap-1 pt-6">
               {nav.map((item, i) => {
@@ -158,9 +170,26 @@ export function SiteHeader() {
                   </motion.div>
                 );
               })}
-              <Button href={company.primaryCta.href} size="lg" className="mt-6 w-full">
-                {company.primaryCta.label}
-              </Button>
+              {/* All CTAs live inside the mobile menu, not the top bar. */}
+              <div className="mt-6 flex flex-col gap-3">
+                <Button
+                  href={appHref("/signin")}
+                  variant="ghost"
+                  size="lg"
+                  className="w-full"
+                  onClick={() => setOpen(false)}
+                >
+                  Sign in
+                </Button>
+                <Button
+                  href={company.primaryCta.href}
+                  size="lg"
+                  className="w-full"
+                  onClick={() => setOpen(false)}
+                >
+                  {company.primaryCta.label}
+                </Button>
+              </div>
             </nav>
           </motion.div>
         )}

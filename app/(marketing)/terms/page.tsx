@@ -4,7 +4,7 @@ import { LegalDoc } from "@/components/layout/legal-doc";
 export const metadata: Metadata = {
   title: "Terms of Service",
   description:
-    "The terms that govern your use of Omni AI — accounts, acceptable use, billing, and liability.",
+    "The terms that govern your use of Omnivo AI — accounts, acceptable use, billing, and liability.",
   alternates: { canonical: "/terms" },
 };
 
@@ -13,7 +13,7 @@ export default function TermsPage() {
     <LegalDoc title="Terms of Service" updated="July 27, 2026">
       <p>
         These Terms of Service (&ldquo;Terms&rdquo;) govern your access to and use of
-        Omni AI (the &ldquo;Service&rdquo;), operated by Omni AI (&ldquo;we&rdquo;,
+        Omnivo AI (the &ldquo;Service&rdquo;), operated by Omnivo AI (&ldquo;we&rdquo;,
         &ldquo;us&rdquo;, or &ldquo;our&rdquo;). By creating an account, installing the
         widget, or otherwise using the Service, you agree to be bound by these Terms. If
         you do not agree, do not use the Service.
@@ -21,7 +21,7 @@ export default function TermsPage() {
 
       <h2>1. The Service</h2>
       <p>
-        Omni AI provides an AI assistant that can be embedded on your website to answer
+        Omnivo AI provides an AI assistant that can be embedded on your website to answer
         visitor questions, book appointments, and capture leads. We may update, improve,
         or change features of the Service at any time. We may also suspend or discontinue
         any part of the Service with reasonable notice where practicable.

@@ -1,12 +1,12 @@
 import Link from "next/link";
 
-// The Omni AI mark: a machined ring with a molten core — the engine running hot.
+// The Omnivo AI mark: a machined ring with a molten core — the engine running hot.
 export function Logo({ className = "" }: { className?: string }) {
   return (
     <Link
       href="/"
       className={`group inline-flex items-center gap-2.5 ${className}`}
-      aria-label="Omni AI home"
+      aria-label="Omnivo AI home"
     >
       <span className="relative inline-flex h-8 w-8 items-center justify-center">
         <svg viewBox="0 0 32 32" className="h-8 w-8" aria-hidden="true">
@@ -48,7 +48,7 @@ export function Logo({ className = "" }: { className?: string }) {
         </svg>
       </span>
       <span className="font-display text-[1.35rem] leading-none tracking-tight text-bone">
-        Omni&nbsp;AI
+        Omnivo&nbsp;AI
       </span>
     </Link>
   );

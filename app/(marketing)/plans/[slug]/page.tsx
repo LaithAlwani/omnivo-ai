@@ -10,17 +10,17 @@ const PLAN_SEO: Record<string, { title: string; description: string }> = {
   starter: {
     title: "Starter plan",
     description:
-      "Omni AI Starter — an AI assistant with chat, booking, and lead capture for a single site. $49/mo, free trial.",
+      "Omnivo AI Starter — an AI assistant with chat, booking, and lead capture for a single site. $49/mo, free trial.",
   },
   professional: {
     title: "Professional plan",
     description:
-      "Omni AI Professional — SMS follow-ups, AI Employees, and white-label branding for growing teams. $149/mo, free trial.",
+      "Omnivo AI Professional — SMS follow-ups, AI Employees, and white-label branding for growing teams. $149/mo, free trial.",
   },
   enterprise: {
     title: "Enterprise plan",
     description:
-      "Omni AI Enterprise — multi-location teams, per-employee calendars, and usage-based pricing. Talk to us.",
+      "Omnivo AI Enterprise — multi-location teams, per-employee calendars, and usage-based pricing. Talk to us.",
   },
 };
 

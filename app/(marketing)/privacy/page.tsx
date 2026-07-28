@@ -4,7 +4,7 @@ import { LegalDoc } from "@/components/layout/legal-doc";
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description:
-    "How Omni AI collects, uses, and protects personal information for account holders and the visitors who chat with the assistant.",
+    "How Omnivo AI collects, uses, and protects personal information for account holders and the visitors who chat with the assistant.",
   alternates: { canonical: "/privacy" },
 };
 
@@ -12,11 +12,11 @@ export default function PrivacyPage() {
   return (
     <LegalDoc title="Privacy Policy" updated="July 27, 2026">
       <p>
-        This Privacy Policy explains how Omni AI (&ldquo;we&rdquo;, &ldquo;us&rdquo;, or
+        This Privacy Policy explains how Omnivo AI (&ldquo;we&rdquo;, &ldquo;us&rdquo;, or
         &ldquo;our&rdquo;) collects, uses, and shares personal information when you use our
         website, dashboard, and embeddable assistant (the &ldquo;Service&rdquo;). It covers
         both our customers (account holders) and the visitors who interact with an
-        assistant powered by Omni AI.
+        assistant powered by Omnivo AI.
       </p>
 
       <h2>1. Information we collect</h2>
@@ -74,7 +74,7 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Legal reasons</strong> — where required by law, or to protect the rights,
-          safety, and security of Omni AI, our users, or the public.
+          safety, and security of Omnivo AI, our users, or the public.
         </li>
         <li>
           <strong>Business transfers</strong> — in connection with a merger, acquisition,

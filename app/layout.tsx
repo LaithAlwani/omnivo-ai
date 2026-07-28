@@ -24,12 +24,12 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   metadataBase: new URL("https://omnivoai.ca"),
   title: {
-    default: "Omni AI — an AI assistant that chats, books, and captures leads",
-    template: "%s · Omni AI",
+    default: "Omnivo AI — an AI assistant that chats, books, and captures leads",
+    template: "%s · Omnivo AI",
   },
   description:
     "Deploy an AI assistant that chats with visitors, books appointments, and captures leads on your site. Paste one snippet — it goes live in minutes.",
-  applicationName: "Omni AI",
+  applicationName: "Omnivo AI",
   keywords: [
     "AI assistant",
     "AI chatbot for business",
@@ -38,24 +38,24 @@ export const metadata: Metadata = {
     "embeddable AI widget",
     "AI receptionist",
   ],
-  authors: [{ name: "Omni AI" }],
-  creator: "Omni AI",
-  publisher: "Omni AI",
+  authors: [{ name: "Omnivo AI" }],
+  creator: "Omnivo AI",
+  publisher: "Omnivo AI",
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "Omni AI — an AI assistant that chats, books, and captures leads",
+    title: "Omnivo AI — an AI assistant that chats, books, and captures leads",
     description:
       "Paste one snippet. An AI assistant that answers, books, and captures leads goes live on your site.",
     url: "/",
     type: "website",
-    siteName: "Omni AI",
+    siteName: "Omnivo AI",
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Omni AI — an AI assistant that chats, books, and captures leads",
+    title: "Omnivo AI — an AI assistant that chats, books, and captures leads",
     description:
       "Paste one snippet. An AI assistant that answers, books, and captures leads goes live on your site.",
   },

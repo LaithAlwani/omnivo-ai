@@ -18,7 +18,7 @@ export const faqs: Faq[] = [
     a: "Every enquiry becomes a tracked lead with the contact's details, what they asked, and where they came from. You see them in your dashboard and can follow up by email or SMS — automatically or by hand.",
   },
   {
-    q: "Will it look like my brand or like Omni AI?",
+    q: "Will it look like my brand or like Omnivo AI?",
     a: "Yours. On Professional and up you set the logo, colors, and assistant name, and remove our branding entirely. Customers see your assistant on your site — they never know we exist.",
   },
   {

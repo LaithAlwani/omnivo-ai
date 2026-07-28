@@ -7,8 +7,16 @@ import { appError } from "./lib/errors";
 
 // -----------------------------------------------------------------------------
 // Transactional SMS (Twilio REST). A single *platform* Twilio account sends for
-// every tenant, so configure once on the Convex deployment:
-//   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM  (E.164 sender number)
+// every tenant. Configure once on the Convex deployment:
+//
+//   TWILIO_ACCOUNT_SID          (always required — identifies the account)
+//   Auth, in order of preference:
+//     TWILIO_API_KEY + TWILIO_API_SECRET   (recommended: scoped, rotatable)
+//     TWILIO_AUTH_TOKEN                     (fallback: the primary token)
+//   Sender, in order of preference:
+//     TWILIO_MESSAGING_SERVICE_SID (MG…)   (recommended: number pool + 10DLC)
+//     TWILIO_FROM                           (fallback: one E.164 number)
+//
 // Delivery receipts POST back to /twilio/status (see http.ts).
 //
 // `fetch` runs in the default Convex runtime, so no "use node" here — which
@@ -48,27 +56,60 @@ function formatWhen(startMs: number, timezone: string | null): string {
 
 /** Send one SMS via the platform Twilio account. Throws CONFIG if unconfigured. */
 async function sendSms(to: string, body: string): Promise<void> {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_FROM;
-  if (!sid || !token || !from) {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  if (!accountSid) {
     appError(
       "CONFIG",
-      "SMS is not configured — set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM on the Convex deployment.",
+      "SMS is not configured — set TWILIO_ACCOUNT_SID on the Convex deployment.",
     );
   }
 
-  const params = new URLSearchParams({ To: to, From: from, Body: body });
+  // Auth: prefer a scoped API key/secret; fall back to the account auth token.
+  // The URL always targets the account SID either way.
+  const apiKey = process.env.TWILIO_API_KEY;
+  const apiSecret = process.env.TWILIO_API_SECRET;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  let authUser: string;
+  let authPass: string;
+  if (apiKey && apiSecret) {
+    authUser = apiKey;
+    authPass = apiSecret;
+  } else if (authToken) {
+    authUser = accountSid;
+    authPass = authToken;
+  } else {
+    appError(
+      "CONFIG",
+      "SMS auth is not configured — set TWILIO_API_KEY + TWILIO_API_SECRET (recommended) or TWILIO_AUTH_TOKEN.",
+    );
+  }
+
+  const params = new URLSearchParams({ To: to, Body: body });
+  // Sender: prefer a Messaging Service (number pool + 10DLC/compliance); fall
+  // back to a single From number.
+  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+  const from = process.env.TWILIO_FROM;
+  if (messagingServiceSid) {
+    params.set("MessagingServiceSid", messagingServiceSid);
+  } else if (from) {
+    params.set("From", from);
+  } else {
+    appError(
+      "CONFIG",
+      "SMS sender is not configured — set TWILIO_MESSAGING_SERVICE_SID (recommended) or TWILIO_FROM.",
+    );
+  }
+
   // Ask Twilio to POST delivery status back so failures surface in our logs.
   const siteUrl = process.env.CONVEX_SITE_URL;
   if (siteUrl) params.set("StatusCallback", `${siteUrl}/twilio/status`);
 
   const res = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
     {
       method: "POST",
       headers: {
-        Authorization: `Basic ${btoa(`${sid}:${token}`)}`,
+        Authorization: `Basic ${btoa(`${authUser}:${authPass}`)}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: params.toString(),

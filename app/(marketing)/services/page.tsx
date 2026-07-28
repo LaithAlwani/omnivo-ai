@@ -6,7 +6,7 @@ import { ContactSection } from "@/components/sections/contact-section";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Omni AI pricing — Starter, Professional, and Enterprise. An AI assistant that chats, books, and captures leads, from $49/mo. Free trial on every plan.",
+    "Omnivo AI pricing — Starter, Professional, and Enterprise. An AI assistant that chats, books, and captures leads, from $49/mo. Free trial on every plan.",
 };
 
 export default function ServicesPage() {

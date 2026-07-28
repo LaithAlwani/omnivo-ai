@@ -84,8 +84,10 @@ export function Hero() {
               className="mt-12 flex divide-x divide-line border-t border-line pt-6"
             >
               {heroStats.map((s) => (
-                <div key={s.label} className="px-6 first:pl-0">
-                  <dt className="font-display text-3xl text-bone">{s.value}</dt>
+                <div key={s.label} className="px-4 first:pl-0 sm:px-6">
+                  <dt className="font-display text-2xl whitespace-nowrap text-bone sm:text-3xl">
+                    {s.value}
+                  </dt>
                   <dd className="mt-1 font-mono text-xs uppercase tracking-wider text-faint">
                     {s.label}
                   </dd>

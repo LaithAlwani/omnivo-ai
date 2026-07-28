@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
 
 // -----------------------------------------------------------------------------
-// Omni AI — multi-tenant schema, partitioned by businessId from row zero.
+// Omnivo AI — multi-tenant schema, partitioned by businessId from row zero.
 // Phase 0 defines the tenancy core + Convex-Auth-managed tables. Each domain
 // tool (booking, leads, knowledge, …) adds its own tables in its own phase,
 // always carrying a required `businessId` (+ `staffId` where relevant).
