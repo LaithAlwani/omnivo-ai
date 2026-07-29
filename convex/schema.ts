@@ -298,6 +298,38 @@ export default defineSchema({
     sms: v.optional(v.number()),
   }).index("by_business_period", ["businessId", "period"]),
 
+  // AI Employees — composable assistant roles (Receptionist, Sales, Reviews…)
+  // built from the shared toolkit. The widget uses the business's default active
+  // employee; when none exists it falls back to the base assistant (branding +
+  // aiSettings). Professional+.
+  aiEmployees: defineTable({
+    businessId: v.id("businesses"),
+    name: v.string(), // the assistant's display name
+    role: v.string(), // preset label ("receptionist"…) or "custom"
+    persona: v.string(), // system-prompt instructions for this role
+    welcomeMsg: v.string(),
+    canBook: v.boolean(), // may check availability + book
+    canCaptureLeads: v.boolean(), // may capture leads
+    active: v.boolean(),
+    isDefault: v.boolean(), // the one the widget serves
+    order: v.number(),
+  }).index("by_business", ["businessId"]),
+
+  // Per-business custom sending domain (bring-your-own SMTP), Professional+.
+  // The password is stored AES-256-GCM encrypted (see emailNode.ts); `verified`
+  // flips true after a successful test send. One row per business.
+  emailSenders: defineTable({
+    businessId: v.id("businesses"),
+    fromName: v.string(),
+    fromEmail: v.string(),
+    host: v.string(),
+    port: v.number(),
+    username: v.string(),
+    passwordEnc: v.string(), // "ivB64:tagB64:ciphertextB64"
+    verified: v.boolean(),
+    lastTestedAt: v.optional(v.number()),
+  }).index("by_business", ["businessId"]),
+
   // Audit trail for platform-admin cross-tenant actions + sensitive business ops.
   auditLog: defineTable({
     actorUserId: v.id("users"),

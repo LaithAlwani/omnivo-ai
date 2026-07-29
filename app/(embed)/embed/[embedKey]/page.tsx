@@ -14,6 +14,7 @@ type Config = {
   accentColor: string;
   position: "left" | "right";
   chatIcon: string | null;
+  whiteLabel: boolean;
 };
 
 export default function EmbedWidget() {
@@ -196,9 +197,11 @@ export default function EmbedWidget() {
             </svg>
           </button>
         </div>
-        <p className="mt-1.5 text-center text-[10px] text-gray-400">
-          Powered by Omnivo AI
-        </p>
+        {!config?.whiteLabel && (
+          <p className="mt-1.5 text-center text-[10px] text-gray-400">
+            Powered by Omnivo AI
+          </p>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import {
   useBusiness,
   isManagerRole,
 } from "@/components/dashboard/business-context";
+import { EmailSenderCard } from "@/components/dashboard/email-sender-card";
 
 type Branding = {
   primaryColor: string;
@@ -193,6 +194,8 @@ export default function BrandingPage() {
           <WidgetPreview branding={form} />
         </div>
       </div>
+
+      <EmailSenderCard />
     </div>
   );
 }

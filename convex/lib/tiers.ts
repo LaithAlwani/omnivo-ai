@@ -64,6 +64,21 @@ export function smsCap(tier: Tier): number | null {
   return TIER_LIMITS[tier].smsPerMonth;
 }
 
+/** White-label (remove Omnivo attribution) — Professional and up. */
+export function whiteLabelEnabled(tier: Tier): boolean {
+  return TIER_LIMITS[tier].whiteLabel;
+}
+
+/** Custom sending domain (bring-your-own SMTP) — Professional and up. */
+export function customEmailDomainEnabled(tier: Tier): boolean {
+  return TIER_LIMITS[tier].customEmailDomain;
+}
+
+/** AI Employees (composable assistant roles) — Professional and up. */
+export function aiEmployeesEnabled(tier: Tier): boolean {
+  return TIER_LIMITS[tier].aiEmployees;
+}
+
 /** UTC "YYYY-MM" usage period for a timestamp (the month a conversation counts
  *  toward). Callers in queries must pass a time in as an argument rather than
  *  reading the wall clock. */

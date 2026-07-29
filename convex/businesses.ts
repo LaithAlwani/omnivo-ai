@@ -10,6 +10,8 @@ import { internal } from "./_generated/api";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireMember } from "./lib/authz";
 import { appError } from "./lib/errors";
+import { whiteLabelEnabled } from "./lib/tiers";
+import { getDefaultEmployee } from "./employees";
 import { generateEmbedKey } from "./lib/keys";
 import { tierValidator } from "./schema";
 
@@ -254,6 +256,7 @@ export const configForBusiness = internalQuery({
       accentColor: v.string(),
       position: v.union(v.literal("left"), v.literal("right")),
       chatIcon: v.union(v.string(), v.null()),
+      whiteLabel: v.boolean(),
     }),
     v.null(),
   ),
@@ -261,14 +264,19 @@ export const configForBusiness = internalQuery({
     const business = await ctx.db.get(args.businessId);
     if (!business) return null;
     const b = business.branding;
+    // A default AI Employee names & greets the widget in place of the base
+    // assistant branding.
+    const emp = await getDefaultEmployee(ctx, business._id);
     return {
       name: business.name,
-      assistantName: b.assistantName,
-      welcomeMsg: b.welcomeMsg,
+      assistantName: emp ? emp.name : b.assistantName,
+      welcomeMsg: emp ? emp.welcomeMsg : b.welcomeMsg,
       primaryColor: b.primaryColor,
       accentColor: b.accentColor,
       position: b.position,
       chatIcon: b.chatIcon ?? null,
+      // Professional+ removes the "Powered by Omnivo AI" attribution.
+      whiteLabel: whiteLabelEnabled(business.tier),
     };
   },
 });

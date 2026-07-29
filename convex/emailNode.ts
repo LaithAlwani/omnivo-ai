@@ -1,12 +1,74 @@
 "use node";
 
 import { v } from "convex/values";
-import { internalAction } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { appError } from "./lib/errors";
+import { whiteLabelEnabled } from "./lib/tiers";
 import nodemailer from "nodemailer";
+import crypto from "node:crypto";
+
+// A tenant's own SMTP (bring-your-own sending domain), decrypted at send time.
+type SmtpConfig = {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  fromName: string;
+  fromEmail: string;
+};
+
+// --- Credential encryption (AES-256-GCM) -------------------------------------
+// Tenant SMTP passwords are stored encrypted; the key is derived from the
+// deployment secret EMAIL_SECRET (never in the database).
+
+function encKey(): Buffer {
+  const secret = process.env.EMAIL_SECRET;
+  if (!secret) {
+    appError(
+      "CONFIG",
+      "Set EMAIL_SECRET on the Convex deployment to store custom SMTP credentials.",
+    );
+  }
+  return crypto.createHash("sha256").update(secret).digest();
+}
+
+function encryptSecret(plain: string): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", encKey(), iv);
+  const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [
+    iv.toString("base64"),
+    tag.toString("base64"),
+    ct.toString("base64"),
+  ].join(":");
+}
+
+function decryptSecret(enc: string): string {
+  const [ivB, tagB, ctB] = enc.split(":");
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    encKey(),
+    Buffer.from(ivB, "base64"),
+  );
+  decipher.setAuthTag(Buffer.from(tagB, "base64"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(ctB, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+/** Escape user/business-provided text before interpolating into email HTML. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 // Node-runtime email sending (Nodemailer over SMTP). Kept in its own file so no
 // query/mutation ever imports Node built-ins. A single platform SMTP account
@@ -39,16 +101,47 @@ function makeTransport() {
   });
 }
 
+/** The bare email address from MAIL_FROM ("Name <addr>" or "addr"). */
+function fromAddress(): string {
+  const raw = process.env.MAIL_FROM ?? process.env.SMTP_USER ?? "";
+  const m = raw.match(/<([^>]+)>/);
+  return m ? m[1] : raw;
+}
+
+function makeCustomTransport(c: SmtpConfig) {
+  return nodemailer.createTransport({
+    host: c.host,
+    port: c.port,
+    secure: c.port === 465,
+    auth: { user: c.username, pass: c.password },
+  });
+}
+
+const quote = (name: string) => `"${name.replace(/["\r\n]/g, "")}"`;
+
 async function sendEmail(opts: {
   to: string;
   subject: string;
   text: string;
   html: string;
+  /** Override the sender display name (keeps the platform address). */
+  fromName?: string;
+  /** Send via the tenant's own SMTP instead of the platform account. */
+  smtp?: SmtpConfig;
 }): Promise<void> {
-  const transport = makeTransport();
-  await transport.sendMail({
-    from: process.env.MAIL_FROM ?? process.env.SMTP_USER,
-    ...opts,
+  const { fromName, smtp, ...mail } = opts;
+  if (smtp) {
+    await makeCustomTransport(smtp).sendMail({
+      from: `${quote(smtp.fromName)} <${smtp.fromEmail}>`,
+      ...mail,
+    });
+    return;
+  }
+  await makeTransport().sendMail({
+    from: fromName
+      ? `${quote(fromName)} <${fromAddress()}>`
+      : (process.env.MAIL_FROM ?? process.env.SMTP_USER),
+    ...mail,
   });
 }
 
@@ -65,6 +158,75 @@ export const sendPasswordResetEmail = internalAction({
       html: resetEmailHtml(url),
     });
     return null;
+  },
+});
+
+// --- Custom sending domain (bring-your-own SMTP) -----------------------------
+
+/** Encrypt the SMTP password and store the sender config (manager + tier gated
+ *  in the mutation). Saving always resets verification — it must be re-tested. */
+export const saveSender = action({
+  args: {
+    slug: v.string(),
+    fromName: v.string(),
+    fromEmail: v.string(),
+    host: v.string(),
+    port: v.number(),
+    username: v.string(),
+    password: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    await ctx.runMutation(internal.emailSender.upsert, {
+      slug: args.slug,
+      fromName: args.fromName,
+      fromEmail: args.fromEmail,
+      host: args.host,
+      port: args.port,
+      username: args.username,
+      passwordEnc: encryptSecret(args.password),
+    });
+    return null;
+  },
+});
+
+/** Send a test email through the tenant's SMTP; on success mark it verified. */
+export const sendTest = action({
+  args: { slug: v.string(), to: v.string() },
+  returns: v.object({ ok: v.boolean() }),
+  handler: async (ctx, args): Promise<{ ok: boolean }> => {
+    const cfg = await ctx.runQuery(internal.emailSender.configForTest, {
+      slug: args.slug,
+    });
+    if (!cfg) appError("NOT_FOUND", "Add your SMTP details first, then test.");
+
+    await sendEmail({
+      to: args.to,
+      subject: `Test email from ${cfg.fromName}`,
+      text: `This is a test email sent through your configured SMTP. If you received it, your custom sending domain works.`,
+      html: bookingEmailHtml({
+        brand: cfg.fromName,
+        poweredBy: false,
+        heading: "SMTP test successful",
+        intro: `This test email was sent through your own SMTP as ${cfg.fromEmail}. If you're reading it, your custom sending domain is working.`,
+        when: new Date().toLocaleString("en-US"),
+        serviceName: null,
+        staffName: null,
+      }),
+      smtp: {
+        host: cfg.host,
+        port: cfg.port,
+        username: cfg.username,
+        password: decryptSecret(cfg.passwordEnc),
+        fromName: cfg.fromName,
+        fromEmail: cfg.fromEmail,
+      },
+    });
+
+    await ctx.runMutation(internal.emailSender.markTested, {
+      businessId: cfg.businessId,
+    });
+    return { ok: true };
   },
 });
 
@@ -113,11 +275,35 @@ async function notifyBooking(
     info.staffName ? `With: ${info.staffName}` : null,
   ].filter(Boolean);
 
+  // White-label (Professional+) drops the Omnivo attribution; every booking
+  // email is branded as the business either way, since it goes to *their*
+  // customer.
+  const whiteLabel = whiteLabelEnabled(info.tier);
+
+  // If the tenant has a verified custom sending domain, send via their SMTP.
+  const sender = await ctx.runQuery(internal.emailSender.configForBusiness, {
+    businessId: info.businessId,
+  });
+  const smtp: SmtpConfig | undefined = sender
+    ? {
+        host: sender.host,
+        port: sender.port,
+        username: sender.username,
+        password: decryptSecret(sender.passwordEnc),
+        fromName: sender.fromName,
+        fromEmail: sender.fromEmail,
+      }
+    : undefined;
+
   await sendEmail({
     to: info.customerEmail,
+    fromName: info.businessName,
+    smtp,
     subject,
-    text: `${intro}\n\n${lines.join("\n")}\n\nSee you then!\n${info.businessName}`,
+    text: `${intro}\n\n${lines.join("\n")}\n\nSee you then!\n${info.businessName}${whiteLabel ? "" : "\n\nPowered by Omnivo AI"}`,
     html: bookingEmailHtml({
+      brand: info.businessName,
+      poweredBy: !whiteLabel,
       heading,
       intro,
       when,
@@ -142,8 +328,16 @@ function formatWhen(startMs: number, timezone: string | null): string {
 
 // --- Templates ---------------------------------------------------------------
 
-/** Shared branded card shell. */
-function emailShell(inner: string): string {
+/** Shared branded card shell. `brand` sets the eyebrow (defaults to Omnivo AI);
+ *  `poweredBy` appends the attribution footer for non-white-label tenants. */
+function emailShell(
+  inner: string,
+  opts?: { brand?: string; poweredBy?: boolean },
+): string {
+  const brand = escapeHtml(opts?.brand ?? "Omnivo AI");
+  const footer = opts?.poweredBy
+    ? `<div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(236,228,216,0.10);font-size:11px;color:#6b6357;">Powered by Omnivo AI</div>`
+    : "";
   return `<!doctype html>
 <html>
   <body style="margin:0;background:#0c0a08;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#ece4d8;">
@@ -151,8 +345,9 @@ function emailShell(inner: string): string {
       <tr><td align="center">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#17130e;border:1px solid rgba(236,228,216,0.12);border-radius:14px;overflow:hidden;">
           <tr><td style="padding:32px 32px 28px;">
-            <div style="font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:#ff5c1a;font-weight:600;">Omnivo AI</div>
+            <div style="font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:#ff5c1a;font-weight:600;">${brand}</div>
             ${inner}
+            ${footer}
           </td></tr>
         </table>
       </td></tr>
@@ -162,6 +357,8 @@ function emailShell(inner: string): string {
 }
 
 function bookingEmailHtml(opts: {
+  brand: string;
+  poweredBy: boolean;
   heading: string;
   intro: string;
   when: string;
@@ -169,21 +366,24 @@ function bookingEmailHtml(opts: {
   staffName: string | null;
 }): string {
   const row = (label: string, value: string) =>
-    `<tr><td style="padding:7px 0;font-size:13px;color:#9c9184;width:88px;vertical-align:top;">${label}</td><td style="padding:7px 0;font-size:15px;color:#ece4d8;font-weight:500;">${value}</td></tr>`;
+    `<tr><td style="padding:7px 0;font-size:13px;color:#9c9184;width:88px;vertical-align:top;">${label}</td><td style="padding:7px 0;font-size:15px;color:#ece4d8;font-weight:500;">${escapeHtml(value)}</td></tr>`;
   const rows = [
     row("When", opts.when),
     opts.serviceName ? row("Service", opts.serviceName) : "",
     opts.staffName ? row("With", opts.staffName) : "",
   ].join("");
 
-  return emailShell(`
-    <h1 style="margin:16px 0 8px;font-size:24px;line-height:1.2;color:#ece4d8;font-weight:600;">${opts.heading}</h1>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#9c9184;">${opts.intro}</p>
+  return emailShell(
+    `
+    <h1 style="margin:16px 0 8px;font-size:24px;line-height:1.2;color:#ece4d8;font-weight:600;">${escapeHtml(opts.heading)}</h1>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#9c9184;">${escapeHtml(opts.intro)}</p>
     <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid rgba(236,228,216,0.12);border-bottom:1px solid rgba(236,228,216,0.12);margin:0 0 20px;">
       ${rows}
     </table>
     <p style="margin:0;font-size:13px;line-height:1.6;color:#6b6357;">Need to change or cancel? Reply to this email and we'll help.</p>
-  `);
+  `,
+    { brand: opts.brand, poweredBy: opts.poweredBy },
+  );
 }
 
 function resetEmailHtml(url: string): string {

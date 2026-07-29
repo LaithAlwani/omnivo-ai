@@ -142,10 +142,30 @@ export const chat = action({
 
     const client = new Anthropic({ apiKey });
     const model = context.aiSettings.model ?? "claude-haiku-4-5";
+
+    // AI Employee (if the business set a default one) overrides the assistant's
+    // name + persona and scopes which tools it may use.
+    const emp = context.employee;
+    const promptInput = emp
+      ? {
+          name: context.name,
+          branding: { ...context.branding, assistantName: emp.name },
+          aiSettings: { ...context.aiSettings, persona: emp.persona },
+        }
+      : context;
+    const tools = emp
+      ? TOOLS.filter((t) => {
+          if (t.name === "book_appointment" || t.name === "check_availability")
+            return emp.canBook;
+          if (t.name === "capture_lead") return emp.canCaptureLeads;
+          return true; // list_services stays available
+        })
+      : TOOLS;
+
     const system: Anthropic.TextBlockParam[] = [
       {
         type: "text",
-        text: buildSystemPrompt(context, context.knowledge),
+        text: buildSystemPrompt(promptInput, context.knowledge),
         cache_control: { type: "ephemeral" },
       },
       { type: "text", text: bookingGuide },
@@ -160,7 +180,7 @@ export const chat = action({
       model,
       max_tokens: 1024,
       system,
-      tools: TOOLS,
+      tools,
       messages,
     });
 
@@ -189,7 +209,7 @@ export const chat = action({
         model,
         max_tokens: 1024,
         system,
-        tools: TOOLS,
+        tools,
         messages,
       });
     }

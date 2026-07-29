@@ -89,6 +89,7 @@ export const config = action({
     accentColor: string;
     position: "left" | "right";
     chatIcon: string | null;
+    whiteLabel: boolean;
   }> => {
     const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
     const cfg = await ctx.runQuery(internal.businesses.configForBusiness, {

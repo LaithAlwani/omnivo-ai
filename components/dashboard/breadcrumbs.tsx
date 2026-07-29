@@ -13,6 +13,7 @@ const SECTION_LABELS: Record<string, string> = {
   leads: "Leads",
   knowledge: "Knowledge",
   assistant: "Assistant",
+  employees: "AI Employees",
   usage: "Plan & usage",
 };
 

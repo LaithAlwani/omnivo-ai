@@ -3,6 +3,7 @@ import { internalQuery } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireMemberBySlug } from "./lib/authz";
+import { getDefaultEmployee } from "./employees";
 
 // Internal: the tenant data the assistant action needs to build its prompt.
 // Membership-gated (dashboard test surface). The public widget will resolve the
@@ -14,6 +15,9 @@ async function contextFor(ctx: QueryCtx, businessId: Id<"businesses">) {
     .query("knowledge")
     .withIndex("by_business", (q) => q.eq("businessId", business._id))
     .unique();
+  // When the business has a default AI Employee, the chat adopts its persona,
+  // name, and tool scope; otherwise it uses the base assistant.
+  const emp = await getDefaultEmployee(ctx, business._id);
   return {
     name: business.name,
     slug: business.slug,
@@ -21,6 +25,14 @@ async function contextFor(ctx: QueryCtx, businessId: Id<"businesses">) {
     branding: business.branding,
     aiSettings: business.aiSettings,
     knowledge,
+    employee: emp
+      ? {
+          name: emp.name,
+          persona: emp.persona,
+          canBook: emp.canBook,
+          canCaptureLeads: emp.canCaptureLeads,
+        }
+      : null,
   };
 }
 
