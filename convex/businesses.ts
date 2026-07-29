@@ -11,7 +11,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireMember } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { whiteLabelEnabled } from "./lib/tiers";
-import { getDefaultEmployee } from "./employees";
+import { resolveEmployee } from "./employees";
 import { generateEmbedKey } from "./lib/keys";
 import { tierValidator } from "./schema";
 
@@ -246,7 +246,7 @@ export const byEmbedPrefix = internalQuery({
 
 /** Internal: public branding for the widget (safe subset — no storage ids). */
 export const configForBusiness = internalQuery({
-  args: { businessId: v.id("businesses") },
+  args: { businessId: v.id("businesses"), employeeId: v.optional(v.string()) },
   returns: v.union(
     v.object({
       name: v.string(),
@@ -264,9 +264,9 @@ export const configForBusiness = internalQuery({
     const business = await ctx.db.get(args.businessId);
     if (!business) return null;
     const b = business.branding;
-    // A default AI Employee names & greets the widget in place of the base
-    // assistant branding.
-    const emp = await getDefaultEmployee(ctx, business._id);
+    // The targeted (or default) AI Employee names & greets the widget in place
+    // of the base assistant branding.
+    const emp = await resolveEmployee(ctx, business._id, args.employeeId);
     return {
       name: business.name,
       assistantName: emp ? emp.name : b.assistantName,

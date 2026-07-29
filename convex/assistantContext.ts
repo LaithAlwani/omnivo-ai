@@ -3,21 +3,26 @@ import { internalQuery } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireMemberBySlug } from "./lib/authz";
-import { getDefaultEmployee } from "./employees";
+import { resolveEmployee } from "./employees";
 
 // Internal: the tenant data the assistant action needs to build its prompt.
 // Membership-gated (dashboard test surface). The public widget will resolve the
 // tenant by embed key instead, in the widget phase.
-async function contextFor(ctx: QueryCtx, businessId: Id<"businesses">) {
+async function contextFor(
+  ctx: QueryCtx,
+  businessId: Id<"businesses">,
+  employeeId?: string,
+) {
   const business = await ctx.db.get(businessId);
   if (!business) return null;
   const knowledge = await ctx.db
     .query("knowledge")
     .withIndex("by_business", (q) => q.eq("businessId", business._id))
     .unique();
-  // When the business has a default AI Employee, the chat adopts its persona,
-  // name, and tool scope; otherwise it uses the base assistant.
-  const emp = await getDefaultEmployee(ctx, business._id);
+  // The widget may target a specific AI Employee; otherwise the business
+  // default. Either way its persona, name, and tool scope override the base
+  // assistant.
+  const emp = await resolveEmployee(ctx, business._id, employeeId);
   return {
     name: business.name,
     slug: business.slug,
@@ -47,8 +52,8 @@ export const get = internalQuery({
 
 /** Public path: context resolved from a verified embed key (see public.ts). */
 export const getForBusiness = internalQuery({
-  args: { businessId: v.id("businesses") },
+  args: { businessId: v.id("businesses"), employeeId: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    return await contextFor(ctx, args.businessId);
+    return await contextFor(ctx, args.businessId, args.employeeId);
   },
 });

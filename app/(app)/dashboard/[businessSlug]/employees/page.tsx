@@ -252,6 +252,12 @@ function EmployeeCard({
         )}
       </div>
 
+      {/* How to target this specific employee from a widget snippet. */}
+      <p className="mt-2 break-all font-mono text-[0.65rem] text-faint">
+        Widget target:{" "}
+        <span className="text-bone-dim">data-employee=&quot;{employee._id}&quot;</span>
+      </p>
+
       <fieldset disabled={!canEdit || busy !== null} className="mt-4 space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <input

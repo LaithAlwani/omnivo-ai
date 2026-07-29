@@ -15,6 +15,8 @@
   }
   var color = script.getAttribute("data-color") || "#111827";
   var position = script.getAttribute("data-position") === "left" ? "left" : "right";
+  // Optional: target a specific AI Employee (else the business default serves).
+  var employee = script.getAttribute("data-employee");
   var appOrigin = new URL(script.src).origin;
 
   var side = position === "left" ? "left: 20px;" : "right: 20px;";
@@ -46,7 +48,8 @@
   frame.title = "Chat";
   frame.src =
     appOrigin + "/embed/" + encodeURIComponent(key) +
-    "?o=" + encodeURIComponent(location.origin);
+    "?o=" + encodeURIComponent(location.origin) +
+    (employee ? "&e=" + encodeURIComponent(employee) : "");
   frame.allow = "clipboard-write";
   frame.style.cssText =
     "position:fixed;bottom:88px;" + side +

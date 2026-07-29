@@ -26,6 +26,24 @@ export async function getDefaultEmployee(
   return rows.find((e) => e.isDefault && e.active) ?? null;
 }
 
+/** Resolve the employee a widget should use: the one the embed snippet targets
+ *  (`data-employee`), if it's a valid active employee of this business —
+ *  otherwise the business default. `employeeId` is untrusted client input. */
+export async function resolveEmployee(
+  ctx: QueryCtx,
+  businessId: Id<"businesses">,
+  employeeId?: string | null,
+): Promise<Doc<"aiEmployees"> | null> {
+  if (employeeId) {
+    const id = ctx.db.normalizeId("aiEmployees", employeeId);
+    if (id) {
+      const emp = await ctx.db.get(id);
+      if (emp && emp.businessId === businessId && emp.active) return emp;
+    }
+  }
+  return getDefaultEmployee(ctx, businessId);
+}
+
 const fieldArgs = {
   name: v.string(),
   role: v.string(),

@@ -34,8 +34,13 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 function originAllowed(domains: string[], origin?: string): boolean {
-  if (domains.length === 0) return true; // not configured → allow
-  if (!origin) return true; // can't verify from an action; soft guard only
+  // No allow-list configured → the widget is open (tenant hasn't locked it down).
+  if (domains.length === 0) return true;
+  // Allow-list configured: the origin must be present AND match. widget.js always
+  // sends the parent origin, so a missing origin means a direct/forged call —
+  // reject it. (The origin is client-asserted, so this is defense-in-depth on top
+  // of the hashed embed key, not a cryptographic boundary.)
+  if (!origin) return false;
   let host: string;
   try {
     host = new URL(origin).host;
@@ -77,7 +82,7 @@ const keyArgs = { embedKey: v.string(), origin: v.optional(v.string()) };
 
 /** Branding for the widget to render itself (name, colors, welcome message). */
 export const config = action({
-  args: keyArgs,
+  args: { ...keyArgs, employeeId: v.optional(v.string()) },
   handler: async (
     ctx,
     args,
@@ -94,6 +99,7 @@ export const config = action({
     const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
     const cfg = await ctx.runQuery(internal.businesses.configForBusiness, {
       businessId,
+      employeeId: args.employeeId,
     });
     if (!cfg) appError("NOT_FOUND", "That business doesn't exist.");
     return cfg;

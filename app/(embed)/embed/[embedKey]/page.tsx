@@ -22,6 +22,7 @@ export default function EmbedWidget() {
   const search = useSearchParams();
   const embedKey = params.embedKey;
   const origin = search.get("o") ?? undefined;
+  const employeeId = search.get("e") ?? undefined;
 
   const loadConfig = useAction(api.public.config);
   const chat = useAction(api.publicChat.chat);
@@ -44,7 +45,7 @@ export default function EmbedWidget() {
   // Load branding once, then seed the welcome message.
   useEffect(() => {
     let live = true;
-    loadConfig({ embedKey, origin })
+    loadConfig({ embedKey, origin, employeeId })
       .then((c) => {
         if (!live) return;
         setConfig(c);
@@ -73,6 +74,7 @@ export default function EmbedWidget() {
         embedKey,
         origin,
         conversationId,
+        employeeId,
         messages: next.map((m) => ({ role: m.role, content: m.content })),
       });
       setMessages((m) => [...m, { role: "assistant", content: reply }]);

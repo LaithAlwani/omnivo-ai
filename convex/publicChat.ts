@@ -82,6 +82,7 @@ export const chat = action({
     embedKey: v.string(),
     origin: v.optional(v.string()),
     conversationId: v.optional(v.string()),
+    employeeId: v.optional(v.string()),
     messages: v.array(messageValidator),
   },
   returns: v.object({ reply: v.string() }),
@@ -126,6 +127,7 @@ export const chat = action({
     }
     const context = await ctx.runQuery(internal.assistantContext.getForBusiness, {
       businessId,
+      employeeId: args.employeeId,
     });
     if (!context) appError("NOT_FOUND", "That business doesn't exist.");
 
