@@ -111,7 +111,7 @@ function BookingsInner() {
   }
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-6xl">
       <h1 className="font-display text-3xl text-bone">Bookings</h1>
       <p className="mt-1 text-sm text-muted">
         {isManagerRole(b.role)
@@ -120,7 +120,9 @@ function BookingsInner() {
         Times shown in your local timezone.
       </p>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+      {/* New booking (with the wider date picker) takes two-thirds; Upcoming
+          takes the last third on desktop. Stacks on mobile. */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-[2fr_1fr]">
         {/* New booking */}
         <div className="min-w-0 rounded-xl border border-line bg-surface/40 p-6">
           <h2 className="text-lg text-bone">New booking</h2>

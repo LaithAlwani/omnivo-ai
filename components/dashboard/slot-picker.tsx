@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -31,6 +31,12 @@ export function SlotPicker({
 }) {
   const [nowMs] = useState(() => Date.now());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  // Desktop arrows nudge the day strip by roughly three cells; the strip still
+  // scrolls by touch/trackpad on mobile (where the arrows are hidden).
+  const scrollStrip = (dir: -1 | 1) =>
+    stripRef.current?.scrollBy({ left: dir * 220, behavior: "smooth" });
   const slots = useQuery(api.slots.getSlots, {
     slug,
     staffId,
@@ -77,41 +83,71 @@ export function SlotPicker({
 
   return (
     <div>
-      <div className="flex w-full min-w-0 gap-2 overflow-x-auto pb-2">
-        {days.map((d) => {
-          const has = d.slots.length > 0;
-          const active = d.key === activeKey;
-          return (
-            <button
-              key={d.key}
-              type="button"
-              onClick={() => setSelectedDay(d.key)}
-              className={`flex w-16 shrink-0 flex-col items-center rounded-xl border px-2 py-2.5 transition-colors ${
-                active
-                  ? "border-ember bg-ember-soft"
-                  : has
-                    ? "border-line-strong hover:border-ember/50"
-                    : "border-line opacity-45"
-              }`}
-            >
-              <span className="font-mono text-[0.65rem] uppercase tracking-wider text-faint">
-                {d.weekday}
-              </span>
-              <span
-                className={`mt-0.5 font-display text-2xl leading-none ${
-                  active ? "text-bone" : "text-bone-dim"
+      <div className="flex items-stretch gap-2">
+        {/* Desktop-only scroll arrow (left). Hidden on mobile, which swipes. */}
+        <button
+          type="button"
+          onClick={() => scrollStrip(-1)}
+          aria-label="Earlier days"
+          className="hidden w-8 shrink-0 items-center justify-center rounded-xl border border-line-strong text-bone-dim transition-colors hover:border-ember/50 hover:text-bone sm:flex"
+        >
+          <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <path d="M10 3 5 8l5 5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        {/* Day strip — scrollbar hidden (invisible on mobile too). */}
+        <div
+          ref={stripRef}
+          className="flex w-full min-w-0 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {days.map((d) => {
+            const has = d.slots.length > 0;
+            const active = d.key === activeKey;
+            return (
+              <button
+                key={d.key}
+                type="button"
+                onClick={() => setSelectedDay(d.key)}
+                className={`flex w-16 shrink-0 flex-col items-center rounded-xl border px-2 py-2.5 transition-colors ${
+                  active
+                    ? "border-ember bg-ember-soft"
+                    : has
+                      ? "border-line-strong hover:border-ember/50"
+                      : "border-line opacity-45"
                 }`}
               >
-                {d.dayNum}
-              </span>
-              <span className="mt-1 h-1.5">
-                {has && (
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-ember" />
-                )}
-              </span>
-            </button>
-          );
-        })}
+                <span className="font-mono text-[0.65rem] uppercase tracking-wider text-faint">
+                  {d.weekday}
+                </span>
+                <span
+                  className={`mt-0.5 font-display text-2xl leading-none ${
+                    active ? "text-bone" : "text-bone-dim"
+                  }`}
+                >
+                  {d.dayNum}
+                </span>
+                <span className="mt-1 h-1.5">
+                  {has && (
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-ember" />
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Desktop-only scroll arrow (right). */}
+        <button
+          type="button"
+          onClick={() => scrollStrip(1)}
+          aria-label="Later days"
+          className="hidden w-8 shrink-0 items-center justify-center rounded-xl border border-line-strong text-bone-dim transition-colors hover:border-ember/50 hover:text-bone sm:flex"
+        >
+          <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <path d="m6 3 5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       </div>
 
       <div className="mt-4">
