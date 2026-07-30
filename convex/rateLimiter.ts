@@ -20,7 +20,27 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // Public writes — hard caps to stop booking / lead spam.
   widgetBooking: { kind: "fixed window", rate: 12, period: MINUTE },
   widgetLead: { kind: "fixed window", rate: 12, period: MINUTE },
+  // Marketing "Book a demo" form. This surface has no tenant, so the limits are
+  // platform-wide: a per-email cap stops one address from flooding the inbox,
+  // and a global token bucket shields the shared SMTP account from a spray of
+  // varied addresses.
+  demoRequestPerEmail: { kind: "fixed window", rate: 3, period: 10 * MINUTE },
+  demoRequestGlobal: {
+    kind: "token bucket",
+    rate: 30,
+    period: MINUTE,
+    capacity: 40,
+  },
 });
+
+/** Turn a failed rate-limit result into a user-readable RATE_LIMITED error. */
+function tooManyRequests(retryAfter?: number): never {
+  const secs = Math.ceil((retryAfter ?? 0) / 1000);
+  appError(
+    "RATE_LIMITED",
+    `Too many requests right now — please try again${secs ? ` in ${secs}s` : " shortly"}.`,
+  );
+}
 
 /** Consume one token for `name`, keyed to the business. Throws RATE_LIMITED
  *  (with a user-readable retry hint) when the tenant is over its quota. */
@@ -32,11 +52,19 @@ export async function enforceLimit(
   const { ok, retryAfter } = await rateLimiter.limit(ctx, name, {
     key: businessId,
   });
-  if (!ok) {
-    const secs = Math.ceil((retryAfter ?? 0) / 1000);
-    appError(
-      "RATE_LIMITED",
-      `Too many requests right now — please try again${secs ? ` in ${secs}s` : " shortly"}.`,
-    );
-  }
+  if (!ok) tooManyRequests(retryAfter);
+}
+
+/** Guard the tenant-less demo-request form: a global cap plus a per-email cap.
+ *  Both must pass; throws RATE_LIMITED on the first that trips. */
+export async function enforceDemoRequestLimit(
+  ctx: ActionCtx,
+  emailKey: string,
+): Promise<void> {
+  const global = await rateLimiter.limit(ctx, "demoRequestGlobal");
+  if (!global.ok) tooManyRequests(global.retryAfter);
+  const perEmail = await rateLimiter.limit(ctx, "demoRequestPerEmail", {
+    key: emailKey,
+  });
+  if (!perEmail.ok) tooManyRequests(perEmail.retryAfter);
 }
