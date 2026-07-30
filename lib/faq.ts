@@ -31,6 +31,6 @@ export const faqs: Faq[] = [
   },
   {
     q: "How much does it cost?",
-    a: "Starter is $49/mo for a single site, Professional is $149/mo with SMS, AI Employees, and white-label, and Enterprise is custom for multi-location businesses and agencies. Every plan starts with a free trial.",
+    a: "You hire one AI employee on a base plan — Starter is $99/mo (1 project, 2,500 conversations and 2,500 emails a month) and Professional is $249/mo (up to 3 projects, higher limits, white-label, and a custom email domain). Then you switch on the skills you need as add-on modules: Booking (+$49), Lead Qualification (+$15), SMS Automation (+$49), Review Management (+$29), Sales Assistant (+$49), and Integrations (+$49). Enterprise is custom. Every plan starts with a free trial.",
   },
 ];

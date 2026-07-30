@@ -2,7 +2,7 @@ import Link from "next/link";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { Button } from "@/components/ui/button";
-import { plans } from "@/lib/site-config";
+import { plans, addOnModules, overageRates } from "@/lib/site-config";
 
 export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
   return (
@@ -85,6 +85,46 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
               </article>
             </Reveal>
           ))}
+        </div>
+
+        {/* Add-on modules — the skills the one AI employee can gain. */}
+        <div className="mt-16">
+          <h3 className="text-center font-display text-2xl text-bone">
+            One employee. <span className="text-molten">Add the skills</span> you
+            need.
+          </h3>
+          <p className="mx-auto mt-3 max-w-xl text-center text-sm text-muted">
+            Every plan is one AI employee. Switch on modules to give it new
+            skills — they stack on any base plan.
+          </p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {addOnModules.map((m, i) => (
+              <Reveal key={m.name} delay={0.05 * i} className="h-full">
+                <div className="flex h-full flex-col rounded-xl border border-line bg-surface/40 p-5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h4 className="font-display text-lg text-bone">{m.name}</h4>
+                    <span className="font-mono text-sm text-ember">+${m.price}</span>
+                  </div>
+                  <p className="mt-1.5 text-sm text-muted">{m.blurb}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+
+        {/* Overage — metered once you pass a plan's allowance. */}
+        <div className="mx-auto mt-12 max-w-xl rounded-xl border border-line bg-surface/40 p-6">
+          <div className="text-center font-mono text-xs uppercase tracking-wider text-faint">
+            If you go over your monthly allowance
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            {overageRates.map((o) => (
+              <div key={o.label} className="text-center">
+                <div className="font-display text-lg text-bone">{o.rate}</div>
+                <div className="mt-0.5 text-xs text-faint">{o.label}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

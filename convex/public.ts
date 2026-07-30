@@ -82,7 +82,7 @@ const keyArgs = { embedKey: v.string(), origin: v.optional(v.string()) };
 
 /** Branding for the widget to render itself (name, colors, welcome message). */
 export const config = action({
-  args: { ...keyArgs, employeeId: v.optional(v.string()) },
+  args: keyArgs,
   handler: async (
     ctx,
     args,
@@ -99,7 +99,6 @@ export const config = action({
     const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
     const cfg = await ctx.runQuery(internal.businesses.configForBusiness, {
       businessId,
-      employeeId: args.employeeId,
     });
     if (!cfg) appError("NOT_FOUND", "That business doesn't exist.");
     return cfg;

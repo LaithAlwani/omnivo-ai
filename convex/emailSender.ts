@@ -10,6 +10,7 @@ import type { Id } from "./_generated/dataModel";
 import { requireMemberBySlug } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { customEmailDomainEnabled } from "./lib/tiers";
+import { planForBusiness } from "./lib/accounts";
 
 // -----------------------------------------------------------------------------
 // Custom sending domain (bring-your-own SMTP). Managers configure their own SMTP
@@ -109,7 +110,8 @@ export const upsert = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { business } = await requireMemberBySlug(ctx, args.slug, "admin");
-    if (!customEmailDomainEnabled(business.tier)) {
+    const plan = await planForBusiness(ctx, business._id);
+    if (!customEmailDomainEnabled(plan)) {
       appError(
         "FORBIDDEN",
         "A custom email domain is available on Professional and up.",

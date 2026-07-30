@@ -7,9 +7,7 @@ import { UsageMeter } from "@/components/dashboard/usage-meter";
 import { plans } from "@/lib/site-config";
 
 const FEATURES = [
-  { key: "sms", label: "SMS reminders & follow-ups" },
   { key: "whiteLabel", label: "White-label branding" },
-  { key: "aiEmployees", label: "AI Employees" },
   { key: "customEmailDomain", label: "Custom email domain" },
 ] as const;
 
@@ -65,30 +63,36 @@ export default function UsagePage() {
           Usage · {data.period}
         </div>
         <div className="mt-4 space-y-5">
-          <div>
-            <UsageMeter
-              label="Conversations"
-              used={data.conversations.used}
-              cap={data.conversations.cap}
-            />
-            {data.conversations.remaining !== null && (
-              <p className="mt-1 text-xs text-faint">
-                {data.conversations.remaining.toLocaleString()} left this month
-              </p>
-            )}
-          </div>
-          <div>
-            <UsageMeter label="SMS" used={data.sms.used} cap={data.sms.cap} />
-            {data.sms.cap !== 0 && data.sms.remaining !== null && (
-              <p className="mt-1 text-xs text-faint">
-                {data.sms.remaining.toLocaleString()} left this month
-              </p>
-            )}
-          </div>
+          <UsageMeter
+            label="Conversations"
+            used={data.conversations.used}
+            cap={data.conversations.cap}
+          />
+          <UsageMeter
+            label="Emails"
+            used={data.emails.used}
+            cap={data.emails.cap}
+          />
+          <UsageMeter label="SMS" used={data.sms.used} cap={data.sms.cap} />
         </div>
         <p className="mt-5 text-xs text-faint">
-          Usage resets at the start of each month.
+          Conversation, email, and SMS usage is pooled across your account and
+          resets at the start of each month.
         </p>
+        {(() => {
+          const overCents =
+            data.conversations.overageCents +
+            data.emails.overageCents +
+            data.sms.overageCents;
+          if (overCents <= 0) return null;
+          return (
+            <p className="mt-3 rounded-lg border border-ember/40 bg-ember-soft/40 px-3 py-2 text-xs text-bone-dim">
+              You&rsquo;re over your monthly allowance. Estimated overage this
+              period:{" "}
+              <span className="text-bone">${(overCents / 100).toFixed(2)}</span>.
+            </p>
+          );
+        })()}
       </div>
 
       {/* Included features */}
@@ -98,7 +102,7 @@ export default function UsagePage() {
         </div>
         <ul className="mt-4 space-y-2.5">
           {FEATURES.map((f) => {
-            const on = data.limits[f.key];
+            const on = data.features[f.key];
             return (
               <li key={f.key} className="flex items-center gap-2.5 text-sm">
                 <Check on={on} />

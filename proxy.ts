@@ -25,7 +25,12 @@ const isAppRoute = createRouteMatcher([
   "/reset-password(.*)",
 ]);
 // Cross-origin infra that must stay reachable on the apex regardless of host.
-const isSharedRoute = createRouteMatcher(["/embed(.*)", "/widget.js", "/api(.*)"]);
+const isSharedRoute = createRouteMatcher([
+  "/embed(.*)",
+  "/r/(.*)", // public review-response pages
+  "/widget.js",
+  "/api(.*)",
+]);
 
 const isProtected = createRouteMatcher(["/dashboard(.*)", "/platform(.*)"]);
 const isSignIn = createRouteMatcher(["/signin(.*)"]);

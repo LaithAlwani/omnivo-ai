@@ -11,6 +11,7 @@ import {
 } from "@/components/dashboard/business-context";
 import { SlotPicker } from "@/components/dashboard/slot-picker";
 import { useConfirm } from "@/components/ui/confirm";
+import { ModuleGate } from "@/components/dashboard/module-gate";
 
 const inputCls =
   "h-10 w-full rounded-lg border border-line-strong bg-surface px-3 text-sm text-bone placeholder:text-faint focus-visible:border-ember";
@@ -31,6 +32,14 @@ type RescheduleTarget = {
 };
 
 export default function BookingsPage() {
+  return (
+    <ModuleGate module="booking">
+      <BookingsInner />
+    </ModuleGate>
+  );
+}
+
+function BookingsInner() {
   const b = useBusiness();
   const staff = useQuery(api.staff.list, { slug: b.slug });
   const services = useQuery(api.services.list, { slug: b.slug });

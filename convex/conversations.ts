@@ -32,7 +32,8 @@ export const record = internalMutation({
     }
 
     // New conversation: create it and bump this month's usage counter (the one
-    // read to enforce the plan's conversation cap).
+    // read to enforce the plan's conversation cap). Usage is pooled at the
+    // account level.
     await ctx.db.insert("conversations", {
       businessId,
       conversationKey,
@@ -40,23 +41,27 @@ export const record = internalMutation({
       lastMessageAt: now,
     });
 
-    const period = usagePeriod(now);
-    const counter = await ctx.db
-      .query("usageCounters")
-      .withIndex("by_business_period", (q) =>
-        q.eq("businessId", businessId).eq("period", period),
-      )
-      .unique();
-    if (counter) {
-      await ctx.db.patch(counter._id, {
-        conversations: counter.conversations + 1,
-      });
-    } else {
-      await ctx.db.insert("usageCounters", {
-        businessId,
-        period,
-        conversations: 1,
-      });
+    const business = await ctx.db.get(businessId);
+    const accountId = business?.accountId;
+    if (accountId) {
+      const period = usagePeriod(now);
+      const counter = await ctx.db
+        .query("usageCounters")
+        .withIndex("by_account_period", (q) =>
+          q.eq("accountId", accountId).eq("period", period),
+        )
+        .unique();
+      if (counter) {
+        await ctx.db.patch(counter._id, {
+          conversations: counter.conversations + 1,
+        });
+      } else {
+        await ctx.db.insert("usageCounters", {
+          accountId,
+          period,
+          conversations: 1,
+        });
+      }
     }
     return null;
   },

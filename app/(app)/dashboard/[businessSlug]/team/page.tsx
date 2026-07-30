@@ -239,14 +239,20 @@ function Members({
 
 function Staff({ slug, canEdit }: { slug: string; canEdit: boolean }) {
   const staff = useQuery(api.staff.list, { slug });
+  const locations = useQuery(api.locations.list, { slug });
   const addStaff = useMutation(api.staff.add);
   const updateStaff = useMutation(api.staff.update);
   const removeStaff = useMutation(api.staff.remove);
+
+  // Location assignment only matters once there's more than one to choose from.
+  const activeLocations = locations?.filter((l) => l.active) ?? [];
+  const multiLocation = activeLocations.length > 1;
 
   const { confirm, dialog } = useConfirm();
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [bookable, setBookable] = useState(true);
+  const [locationId, setLocationId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -255,10 +261,18 @@ function Staff({ slug, canEdit }: { slug: string; canEdit: boolean }) {
     setError(null);
     setPending(true);
     try {
-      await addStaff({ slug, name, title: title || undefined, bookable });
+      await addStaff({
+        slug,
+        name,
+        title: title || undefined,
+        bookable,
+        locationId:
+          locationId ? (locationId as Id<"locations">) : undefined,
+      });
       setName("");
       setTitle("");
       setBookable(true);
+      setLocationId("");
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -378,6 +392,30 @@ function Staff({ slug, canEdit }: { slug: string; canEdit: boolean }) {
               />
             </div>
           )}
+          {canEdit && multiLocation && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="shrink-0 text-xs text-faint">Location</span>
+              <select
+                value={s.locationId ?? ""}
+                onChange={(e) =>
+                  act(() =>
+                    updateStaff({
+                      slug,
+                      staffId: s._id,
+                      locationId: e.target.value as Id<"locations">,
+                    }),
+                  )
+                }
+                className={`${inputCls} h-8 text-xs`}
+              >
+                {activeLocations.map((l) => (
+                  <option key={l._id} value={l._id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           </div>
         ))}
       </div>
@@ -406,6 +444,20 @@ function Staff({ slug, canEdit }: { slug: string; canEdit: boolean }) {
             />
             Bookable
           </label>
+          {multiLocation && (
+            <select
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+              className={inputCls}
+            >
+              <option value="">Default location</option>
+              {activeLocations.map((l) => (
+                <option key={l._id} value={l._id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             type="submit"
             disabled={pending || !name}

@@ -21,6 +21,11 @@ export const tierValidator = v.union(
   v.literal("enterprise"),
 );
 
+// The base subscription plan lives on the ACCOUNT (the owner), not the business.
+// Same three levels as the legacy per-business tier; aliased so call sites read
+// as "plan" going forward.
+export const planValidator = tierValidator;
+
 // Lead pipeline stages, in order. `won`/`lost` are terminal.
 export const leadStatusValidator = v.union(
   v.literal("new"),
@@ -40,16 +45,36 @@ export default defineSchema({
   // Convex Auth managed tables (users, authAccounts, authSessions, …).
   ...authTables,
 
-  // A tenant. Every domain row points back here via `businessId`.
+  // The billing/subscription entity — one per owner. Holds the base plan and
+  // its allowances (pooled usage + project/location limits). Businesses (=
+  // projects) belong to an account and share its usage pool. Numeric limits are
+  // derived from `plan` (see lib/tiers.ts); the optional overrides let an
+  // Enterprise account carry bespoke caps.
+  accounts: defineTable({
+    ownerUserId: v.id("users"),
+    plan: planValidator,
+    projectLimitOverride: v.optional(v.union(v.number(), v.null())),
+    locationLimitOverride: v.optional(v.union(v.number(), v.null())),
+    stripeCustomerId: v.optional(v.string()),
+    stripeSubscriptionId: v.optional(v.string()),
+  }).index("by_owner", ["ownerUserId"]),
+
+  // A tenant / project. Every domain row points back here via `businessId`.
   businesses: defineTable({
     slug: v.string(), // unique, URL-safe
     name: v.string(),
+    // The owning account (the subscription this project counts against). Pooled
+    // usage + plan limits resolve through here. Optional only during the account
+    // backfill migration; treated as required by code.
+    accountId: v.optional(v.id("accounts")),
     status: v.union(
       v.literal("trial"),
       v.literal("active"),
       v.literal("suspended"),
     ),
-    tier: tierValidator,
+    // Legacy per-business plan. Superseded by the owning account's `plan`; kept
+    // (optional) as the migration source and removed in a later cleanup.
+    tier: v.optional(tierValidator),
     // IANA timezone the business operates in (e.g. "America/New_York"). The
     // assistant anchors relative dates ("next Tuesday") to this; per-staff
     // availability can still override with its own timezone.
@@ -84,9 +109,26 @@ export default defineSchema({
       }),
     ),
     templateId: v.optional(v.string()),
+    // Public review destination (e.g. a Google review link). Where the Review
+    // Management module sends customers who rate their visit positively.
+    reviewLink: v.optional(v.string()),
   })
     .index("by_slug", ["slug"])
+    .index("by_account", ["accountId"])
     .index("by_embedKeyPrefix", ["embedKeyPrefix"]),
+
+  // A physical/bookable site within a project. Every project has at least one
+  // (seeded on creation); the plan's `locationLimit` caps how many. Staff and
+  // bookings are scoped to a location, so the assistant books at the right site.
+  locations: defineTable({
+    businessId: v.id("businesses"),
+    name: v.string(),
+    address: v.optional(v.string()),
+    timezone: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    active: v.boolean(),
+    order: v.number(),
+  }).index("by_business", ["businessId"]),
 
   // A user's role within a business. A user may belong to many businesses.
   // owner/admin = manager (sees all staff); staff = employee (sees own).
@@ -104,6 +146,9 @@ export default defineSchema({
   staff: defineTable({
     businessId: v.id("businesses"),
     userId: v.optional(v.id("users")),
+    // The location this resource works at. Optional only during the location
+    // backfill migration; treated as set afterward.
+    locationId: v.optional(v.id("locations")),
     name: v.string(),
     email: v.optional(v.string()),
     title: v.optional(v.string()),
@@ -131,6 +176,9 @@ export default defineSchema({
   bookings: defineTable({
     businessId: v.id("businesses"),
     staffId: v.id("staff"),
+    // The location the appointment is at (derived from the booked staff).
+    // Optional only during the location backfill migration.
+    locationId: v.optional(v.id("locations")),
     start: v.number(),
     end: v.number(),
     status: v.union(v.literal("confirmed"), v.literal("cancelled")),
@@ -144,6 +192,9 @@ export default defineSchema({
     // Set when the SMS reminder is dispatched, so the reminder cron sends exactly
     // once per booking (idempotency guard — patched before the send is scheduled).
     reminderSentAt: v.optional(v.number()),
+    // Set when a post-service review request is dispatched (same idempotency
+    // pattern) so the Review Management cron asks exactly once per booking.
+    reviewRequestSentAt: v.optional(v.number()),
     source: v.union(
       v.literal("dashboard"),
       v.literal("assistant"),
@@ -239,6 +290,12 @@ export default defineSchema({
     source: contactSourceValidator,
     notes: v.optional(v.string()),
     updatedAt: v.number(),
+    // Sales Assistant nurture state. `lastFollowupAt`/`followupCount` make the
+    // nurture cron idempotent + bounded; `qualified` flags a hot lead the owner
+    // was alerted about.
+    lastFollowupAt: v.optional(v.number()),
+    followupCount: v.optional(v.number()),
+    qualified: v.optional(v.boolean()),
   })
     .index("by_business", ["businessId"])
     .index("by_business_status", ["businessId", "status"]),
@@ -288,32 +345,65 @@ export default defineSchema({
     .index("by_business", ["businessId"])
     .index("by_business_key", ["businessId", "conversationKey"]),
 
-  // Per-business monthly usage counters (one row per "YYYY-MM"). Incremented when
-  // a new conversation opens; read to enforce plan caps in O(1) instead of
-  // scanning the conversations table on every check.
+  // Per-ACCOUNT monthly usage counters (one row per "YYYY-MM"). Usage is pooled
+  // across all of an account's projects, so counters key on `accountId`.
+  // Incremented when a new conversation opens / an SMS or email is sent; read to
+  // enforce plan caps in O(1). `businessId` is retained (optional) only for the
+  // account backfill migration and dropped in a later cleanup.
   usageCounters: defineTable({
-    businessId: v.id("businesses"),
+    accountId: v.optional(v.id("accounts")),
+    businessId: v.optional(v.id("businesses")),
     period: v.string(), // "YYYY-MM" (UTC)
     conversations: v.number(),
     sms: v.optional(v.number()),
-  }).index("by_business_period", ["businessId", "period"]),
+    email: v.optional(v.number()),
+  })
+    .index("by_account_period", ["accountId", "period"])
+    .index("by_business_period", ["businessId", "period"]),
 
-  // AI Employees — composable assistant roles (Receptionist, Sales, Reviews…)
-  // built from the shared toolkit. The widget uses the business's default active
-  // employee; when none exists it falls back to the base assistant (branding +
-  // aiSettings). Professional+.
-  aiEmployees: defineTable({
+  // Per-project module entitlements — the source of truth for which add-on
+  // capabilities the single AI Employee has. One row per business; each boolean
+  // gates a module (its tools + prompt fragments + workflows). Toggled from the
+  // dashboard/platform now; driven by Stripe later. The base assistant (chat,
+  // knowledge, basic lead capture) needs no entitlement.
+  tenantFeatures: defineTable({
     businessId: v.id("businesses"),
-    name: v.string(), // the assistant's display name
-    role: v.string(), // preset label ("receptionist"…) or "custom"
-    persona: v.string(), // system-prompt instructions for this role
-    welcomeMsg: v.string(),
-    canBook: v.boolean(), // may check availability + book
-    canCaptureLeads: v.boolean(), // may capture leads
-    active: v.boolean(),
-    isDefault: v.boolean(), // the one the widget serves
-    order: v.number(),
+    bookingEnabled: v.boolean(),
+    leadQualificationEnabled: v.boolean(),
+    smsAutomationEnabled: v.boolean(),
+    reviewManagementEnabled: v.boolean(),
+    salesAssistantEnabled: v.boolean(),
+    integrationsEnabled: v.boolean(),
   }).index("by_business", ["businessId"]),
+
+  // Review Management — a post-service reputation request per completed booking.
+  // The customer opens a public link (by `token`) and rates their visit:
+  // positive → sent to the business's public review page; negative → feedback
+  // captured privately + the owner notified. Powers the Reviews dashboard.
+  reviewRequests: defineTable({
+    businessId: v.id("businesses"),
+    bookingId: v.id("bookings"),
+    customerName: v.string(),
+    customerEmail: v.optional(v.string()),
+    customerPhone: v.optional(v.string()),
+    channel: v.union(v.literal("sms"), v.literal("email")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("responded"),
+    ),
+    sentiment: v.optional(
+      v.union(v.literal("positive"), v.literal("negative")),
+    ),
+    rating: v.optional(v.number()), // 1–5 when given
+    feedback: v.optional(v.string()), // private feedback (negative path)
+    token: v.string(), // public response link id
+    sentAt: v.optional(v.number()),
+    respondedAt: v.optional(v.number()),
+  })
+    .index("by_business", ["businessId"])
+    .index("by_token", ["token"])
+    .index("by_booking", ["bookingId"]),
 
   // Per-business custom sending domain (bring-your-own SMTP), Professional+.
   // The password is stored AES-256-GCM encrypted (see emailNode.ts); `verified`
@@ -329,6 +419,36 @@ export default defineSchema({
     verified: v.boolean(),
     lastTestedAt: v.optional(v.number()),
   }).index("by_business", ["businessId"]),
+
+  // Integrations — connections to a project's own external systems (the
+  // Integrations module). `kind` says what it does; `provider` how. `config`
+  // holds endpoints/field-maps as JSON; `secretEnc` an AES-GCM API key/token
+  // (see lib/secretsNode.ts). Generic `webhook` ships first; named connectors
+  // (Calendly/Acuity/Square/HubSpot/Salesforce/Zapier) arrive in a later slice.
+  integrations: defineTable({
+    businessId: v.id("businesses"),
+    kind: v.union(
+      v.literal("booking"), // the AI books through the client's system
+      v.literal("crmOutbound"), // push new leads/bookings/reviews out
+      v.literal("crmInbound"), // read returning customers in
+    ),
+    provider: v.union(
+      v.literal("webhook"),
+      v.literal("calendly"),
+      v.literal("acuity"),
+      v.literal("square"),
+      v.literal("hubspot"),
+      v.literal("salesforce"),
+      v.literal("zapier"),
+    ),
+    config: v.any(), // endpoints + field mappings (provider-specific JSON)
+    secretEnc: v.optional(v.string()), // "ivB64:tagB64:ctB64"
+    active: v.boolean(),
+    verified: v.boolean(),
+    lastTestedAt: v.optional(v.number()),
+  })
+    .index("by_business", ["businessId"])
+    .index("by_business_kind", ["businessId", "kind"]),
 
   // Audit trail for platform-admin cross-tenant actions + sensitive business ops.
   auditLog: defineTable({

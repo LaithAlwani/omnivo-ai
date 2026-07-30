@@ -11,7 +11,10 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireMember } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { whiteLabelEnabled } from "./lib/tiers";
-import { resolveEmployee } from "./employees";
+import { planForBusiness, accountProjectLimit } from "./lib/accounts";
+import { getOrCreateAccount, projectCount } from "./accounts";
+import { ensureDefaultLocation } from "./locations";
+import { ensureFeatures } from "./entitlements";
 import { generateEmbedKey } from "./lib/keys";
 import { tierValidator } from "./schema";
 
@@ -87,11 +90,23 @@ export const provision = internalMutation({
       .unique();
     if (existing) appError("CONFLICT", `The slug "${args.slug}" is already taken.`);
 
+    // Resolve (or lazily create) the caller's account, then enforce its project
+    // allowance before provisioning another project against it.
+    const accountId = await getOrCreateAccount(ctx, userId, args.tier);
+    const account = await ctx.db.get(accountId);
+    const limit = account ? accountProjectLimit(account) : 1;
+    if (limit !== null && (await projectCount(ctx, accountId)) >= limit) {
+      appError(
+        "FORBIDDEN",
+        `Your plan includes ${limit} project${limit === 1 ? "" : "s"}. Upgrade to add more.`,
+      );
+    }
+
     const businessId = await ctx.db.insert("businesses", {
       name: args.name,
       slug: args.slug,
+      accountId,
       status: "trial",
-      tier: args.tier,
       domains: [],
       embedKeyPrefix: args.embedKeyPrefix,
       embedKeyHash: args.embedKeyHash,
@@ -116,11 +131,23 @@ export const provision = internalMutation({
       role: "owner",
     });
 
+    // Every project starts with one location; the default calendar lives there.
+    const locationId = await ensureDefaultLocation(ctx, businessId);
+
+    // Seed module entitlements so the assistant can book + capture leads out of
+    // the box (matching the pre-modular default). Managers can toggle later.
+    await ensureFeatures(ctx, businessId, {
+      bookingEnabled: true,
+      leadQualificationEnabled: true,
+      smsAutomationEnabled: true,
+    });
+
     // Default shared calendar: a login-less resource named "Main" so booking
     // works before any employees are added. Renamed from the business name so
     // it reads as a calendar, not a person, on the Team page.
     await ctx.db.insert("staff", {
       businessId,
+      locationId,
       name: "Main",
       bookable: true,
       active: true,
@@ -152,7 +179,10 @@ export const listMine = query({
         const { embedKey, embedKeyHash, ...safe } = business;
         void embedKey;
         void embedKeyHash;
-        return { ...safe, role: m.role };
+        // `tier` reflects the owning account's plan (the per-business tier is
+        // legacy and being retired).
+        const plan = await planForBusiness(ctx, business._id);
+        return { ...safe, tier: plan, role: m.role };
       }),
     );
     return rows.filter((r): r is NonNullable<typeof r> => r !== null);
@@ -174,7 +204,8 @@ export const getBySlug = query({
     const { embedKey, embedKeyHash, ...safe } = business;
     void embedKey;
     void embedKeyHash;
-    return safe;
+    const plan = await planForBusiness(ctx, business._id);
+    return { ...safe, tier: plan };
   },
 });
 
@@ -246,7 +277,7 @@ export const byEmbedPrefix = internalQuery({
 
 /** Internal: public branding for the widget (safe subset — no storage ids). */
 export const configForBusiness = internalQuery({
-  args: { businessId: v.id("businesses"), employeeId: v.optional(v.string()) },
+  args: { businessId: v.id("businesses") },
   returns: v.union(
     v.object({
       name: v.string(),
@@ -264,19 +295,18 @@ export const configForBusiness = internalQuery({
     const business = await ctx.db.get(args.businessId);
     if (!business) return null;
     const b = business.branding;
-    // The targeted (or default) AI Employee names & greets the widget in place
-    // of the base assistant branding.
-    const emp = await resolveEmployee(ctx, business._id, args.employeeId);
+    // The single AI Employee is the business's own branding. Professional+
+    // removes the "Powered by Omnivo AI" attribution (from the account plan).
+    const plan = await planForBusiness(ctx, business._id);
     return {
       name: business.name,
-      assistantName: emp ? emp.name : b.assistantName,
-      welcomeMsg: emp ? emp.welcomeMsg : b.welcomeMsg,
+      assistantName: b.assistantName,
+      welcomeMsg: b.welcomeMsg,
       primaryColor: b.primaryColor,
       accentColor: b.accentColor,
       position: b.position,
       chatIcon: b.chatIcon ?? null,
-      // Professional+ removes the "Powered by Omnivo AI" attribution.
-      whiteLabel: whiteLabelEnabled(business.tier),
+      whiteLabel: whiteLabelEnabled(plan),
     };
   },
 });

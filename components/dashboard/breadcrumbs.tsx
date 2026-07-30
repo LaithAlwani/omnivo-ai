@@ -6,14 +6,18 @@ import { usePathname } from "next/navigation";
 // Section segment → label. Mirrors the sidebar nav so crumbs read the same.
 const SECTION_LABELS: Record<string, string> = {
   branding: "Branding",
+  locations: "Locations",
   team: "Team",
   services: "Services",
   schedule: "Schedule",
   bookings: "Bookings",
   leads: "Leads",
+  reviews: "Reviews",
+  sales: "Sales",
   knowledge: "Knowledge",
-  assistant: "Assistant",
-  employees: "AI Employees",
+  assistant: "AI Employee",
+  modules: "Modules",
+  integrations: "Integrations",
   usage: "Plan & usage",
 };
 

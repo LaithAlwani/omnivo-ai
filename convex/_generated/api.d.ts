@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as accounts from "../accounts.js";
 import type * as analytics from "../analytics.js";
 import type * as assistant from "../assistant.js";
 import type * as assistantContext from "../assistantContext.js";
@@ -23,24 +24,33 @@ import type * as crons from "../crons.js";
 import type * as emailNode from "../emailNode.js";
 import type * as emailSender from "../emailSender.js";
 import type * as embedKeys from "../embedKeys.js";
-import type * as employees from "../employees.js";
+import type * as entitlements from "../entitlements.js";
 import type * as http from "../http.js";
+import type * as integrations from "../integrations.js";
+import type * as integrationsNode from "../integrationsNode.js";
 import type * as knowledge from "../knowledge.js";
 import type * as leads from "../leads.js";
+import type * as lib_accounts from "../lib/accounts.js";
 import type * as lib_authz from "../lib/authz.js";
+import type * as lib_bookingProviders from "../lib/bookingProviders.js";
 import type * as lib_bookingRules from "../lib/bookingRules.js";
 import type * as lib_calendarProviders from "../lib/calendarProviders.js";
 import type * as lib_calendarState from "../lib/calendarState.js";
 import type * as lib_errors from "../lib/errors.js";
 import type * as lib_keys from "../lib/keys.js";
 import type * as lib_leoPrompt from "../lib/leoPrompt.js";
+import type * as lib_secretsNode from "../lib/secretsNode.js";
 import type * as lib_slots from "../lib/slots.js";
 import type * as lib_tiers from "../lib/tiers.js";
+import type * as locations from "../locations.js";
+import type * as modules_registry from "../modules/registry.js";
 import type * as passwordReset from "../passwordReset.js";
 import type * as platform from "../platform.js";
 import type * as public_ from "../public.js";
 import type * as publicChat from "../publicChat.js";
 import type * as rateLimiter from "../rateLimiter.js";
+import type * as reviews from "../reviews.js";
+import type * as sales from "../sales.js";
 import type * as services from "../services.js";
 import type * as slots from "../slots.js";
 import type * as sms from "../sms.js";
@@ -56,6 +66,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  accounts: typeof accounts;
   analytics: typeof analytics;
   assistant: typeof assistant;
   assistantContext: typeof assistantContext;
@@ -71,24 +82,33 @@ declare const fullApi: ApiFromModules<{
   emailNode: typeof emailNode;
   emailSender: typeof emailSender;
   embedKeys: typeof embedKeys;
-  employees: typeof employees;
+  entitlements: typeof entitlements;
   http: typeof http;
+  integrations: typeof integrations;
+  integrationsNode: typeof integrationsNode;
   knowledge: typeof knowledge;
   leads: typeof leads;
+  "lib/accounts": typeof lib_accounts;
   "lib/authz": typeof lib_authz;
+  "lib/bookingProviders": typeof lib_bookingProviders;
   "lib/bookingRules": typeof lib_bookingRules;
   "lib/calendarProviders": typeof lib_calendarProviders;
   "lib/calendarState": typeof lib_calendarState;
   "lib/errors": typeof lib_errors;
   "lib/keys": typeof lib_keys;
   "lib/leoPrompt": typeof lib_leoPrompt;
+  "lib/secretsNode": typeof lib_secretsNode;
   "lib/slots": typeof lib_slots;
   "lib/tiers": typeof lib_tiers;
+  locations: typeof locations;
+  "modules/registry": typeof modules_registry;
   passwordReset: typeof passwordReset;
   platform: typeof platform;
   public: typeof public_;
   publicChat: typeof publicChat;
   rateLimiter: typeof rateLimiter;
+  reviews: typeof reviews;
+  sales: typeof sales;
   services: typeof services;
   slots: typeof slots;
   sms: typeof sms;

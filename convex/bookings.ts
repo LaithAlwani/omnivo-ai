@@ -11,6 +11,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { requireMemberBySlug, isManager } from "./lib/authz";
 import { appError } from "./lib/errors";
+import { planForBusiness } from "./lib/accounts";
+import { entitlementsFor } from "./entitlements";
 import { randomHex } from "./lib/keys";
 import { DAY_MS, isOpenSlot, type Span } from "./lib/slots";
 import {
@@ -126,6 +128,7 @@ async function assignStaff(
   business: Doc<"businesses">,
   start: number,
   service: Doc<"services"> | null,
+  locationId?: Id<"locations">,
 ): Promise<{ staffId: Id<"staff">; rule: Doc<"availabilityRules"> } | null> {
   const staff = (
     await ctx.db
@@ -135,7 +138,11 @@ async function assignStaff(
       )
       .collect()
   ).filter(
-    (s) => s.bookable && !s.externalBookingUrl && performsService(s, service),
+    (s) =>
+      s.bookable &&
+      !s.externalBookingUrl &&
+      performsService(s, service) &&
+      (!locationId || s.locationId === locationId),
   );
 
   const candidates: {
@@ -162,6 +169,7 @@ type BookParams = {
   source: "dashboard" | "assistant" | "widget";
   cancelToken: string;
   serviceId?: Id<"services">;
+  locationId?: Id<"locations">;
   customerName: string;
   customerEmail: string;
   customerPhone?: string;
@@ -207,7 +215,13 @@ async function bookCore(
   let rule: Doc<"availabilityRules">;
 
   if (args.staffId === "any") {
-    const picked = await assignStaff(ctx, business, args.start, service);
+    const picked = await assignStaff(
+      ctx,
+      business,
+      args.start,
+      service,
+      args.locationId,
+    );
     if (!picked) {
       appError("CONFLICT", "No one is available at that time.");
     }
@@ -238,9 +252,12 @@ async function bookCore(
   }
 
   const end = args.start + slotDuration(service, rule) * 60_000;
+  // A booking is at its staff member's location.
+  const bookedStaff = await ctx.db.get(staffId);
   const bookingId = await ctx.db.insert("bookings", {
     businessId: business._id,
     staffId,
+    locationId: bookedStaff?.locationId,
     start: args.start,
     end,
     status: "confirmed",
@@ -265,6 +282,24 @@ async function bookCore(
   await ctx.scheduler.runAfter(0, internal.emailNode.sendBookingConfirmation, {
     bookingId,
   });
+
+  // Integrations: push the new booking to any configured outbound CRM.
+  const entitlements = await entitlementsFor(ctx, business._id);
+  if (entitlements.integrationsEnabled) {
+    await ctx.scheduler.runAfter(0, internal.integrationsNode.dispatch, {
+      businessId: business._id,
+      event: {
+        type: "booking.created",
+        data: {
+          start: args.start,
+          startIso: new Date(args.start).toISOString(),
+          customerName: args.customerName.trim(),
+          customerEmail: args.customerEmail.trim(),
+          customerPhone: args.customerPhone?.trim() || null,
+        },
+      },
+    });
+  }
 
   return { bookingId, staffId, start: args.start, end };
 }
@@ -300,6 +335,8 @@ export const notificationContext = internalQuery({
     if (!business) return null;
     const staff = await ctx.db.get(bk.staffId);
     const service = bk.serviceId ? await ctx.db.get(bk.serviceId) : null;
+    // `tier` here is the owning account's plan (drives white-label + SMS gating).
+    const plan = await planForBusiness(ctx, bk.businessId);
     return {
       businessId: bk.businessId,
       status: bk.status,
@@ -308,7 +345,7 @@ export const notificationContext = internalQuery({
       customerPhone: bk.customerPhone ?? null,
       customerEmail: bk.customerEmail,
       businessName: business.name,
-      tier: business.tier,
+      tier: plan,
       timezone: business.timezone ?? null,
       staffName: staff?.name ?? null,
       serviceName: service?.name ?? null,
@@ -326,6 +363,7 @@ const bookingCoreArgs = {
   ),
   cancelToken: v.string(),
   serviceId: v.optional(v.id("services")),
+  locationId: v.optional(v.id("locations")),
   ...customerArgs,
 };
 

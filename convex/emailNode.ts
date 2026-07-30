@@ -6,9 +6,9 @@ import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { appError } from "./lib/errors";
-import { whiteLabelEnabled } from "./lib/tiers";
+import { usagePeriod, whiteLabelEnabled } from "./lib/tiers";
+import { encryptSecret, decryptSecret } from "./lib/secretsNode";
 import nodemailer from "nodemailer";
-import crypto from "node:crypto";
 
 // A tenant's own SMTP (bring-your-own sending domain), decrypted at send time.
 type SmtpConfig = {
@@ -20,46 +20,9 @@ type SmtpConfig = {
   fromEmail: string;
 };
 
-// --- Credential encryption (AES-256-GCM) -------------------------------------
-// Tenant SMTP passwords are stored encrypted; the key is derived from the
-// deployment secret EMAIL_SECRET (never in the database).
-
-function encKey(): Buffer {
-  const secret = process.env.EMAIL_SECRET;
-  if (!secret) {
-    appError(
-      "CONFIG",
-      "Set EMAIL_SECRET on the Convex deployment to store custom SMTP credentials.",
-    );
-  }
-  return crypto.createHash("sha256").update(secret).digest();
-}
-
-function encryptSecret(plain: string): string {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", encKey(), iv);
-  const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return [
-    iv.toString("base64"),
-    tag.toString("base64"),
-    ct.toString("base64"),
-  ].join(":");
-}
-
-function decryptSecret(enc: string): string {
-  const [ivB, tagB, ctB] = enc.split(":");
-  const decipher = crypto.createDecipheriv(
-    "aes-256-gcm",
-    encKey(),
-    Buffer.from(ivB, "base64"),
-  );
-  decipher.setAuthTag(Buffer.from(tagB, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(ctB, "base64")),
-    decipher.final(),
-  ]).toString("utf8");
-}
+// Per-tenant credential encryption now lives in lib/secretsNode.ts (shared with
+// Integrations). Re-exported names kept local so the rest of this file is
+// unchanged.
 
 /** Escape user/business-provided text before interpolating into email HTML. */
 function escapeHtml(s: string): string {
@@ -244,6 +207,124 @@ export const sendBookingReminder = internalAction({
   handler: (ctx, { bookingId }) => notifyBooking(ctx, bookingId, "reminder"),
 });
 
+/** Public base for review-response links (the customer-facing apex host). */
+function reviewUrl(token: string): string {
+  const base = process.env.SITE_URL ?? "https://omnivoai.ca";
+  return `${base.replace(/\/$/, "")}/r/${token}`;
+}
+
+/** Email a completed-booking customer a review request (Review Management). */
+export const sendReviewRequest = internalAction({
+  args: { requestId: v.id("reviewRequests") },
+  returns: v.null(),
+  handler: async (ctx, { requestId }): Promise<null> => {
+    const info = await ctx.runQuery(internal.reviews.requestContext, {
+      requestId,
+    });
+    if (!info || info.alreadySent || !info.customerEmail) return null;
+
+    const sender = await ctx.runQuery(internal.emailSender.configForBusiness, {
+      businessId: info.businessId,
+    });
+    const smtp: SmtpConfig | undefined = sender
+      ? {
+          host: sender.host,
+          port: sender.port,
+          username: sender.username,
+          password: decryptSecret(sender.passwordEnc),
+          fromName: sender.fromName,
+          fromEmail: sender.fromEmail,
+        }
+      : undefined;
+
+    // Platform sends count against the pooled email cap; BYO-SMTP sends don't.
+    if (!smtp) {
+      const { over } = await ctx.runQuery(internal.usage.emailCapStatus, {
+        businessId: info.businessId,
+        period: usagePeriod(Date.now()),
+      });
+      if (over) return null;
+    }
+
+    const url = reviewUrl(info.token);
+    const intro = `Hi ${info.customerName}, thanks for visiting ${info.businessName}! We'd love to hear how it went.`;
+    await sendEmail({
+      to: info.customerEmail,
+      fromName: info.businessName,
+      smtp,
+      subject: `How was your visit to ${info.businessName}?`,
+      text: `${intro}\n\nShare your feedback: ${url}\n\n${info.businessName}${info.whiteLabel ? "" : "\n\nPowered by Omnivo AI"}`,
+      html: emailShell(
+        `<h1 style="margin:16px 0 8px;font-size:22px;color:#ece4d8;">How did we do?</h1>
+         <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#b8ac9c;">${escapeHtml(intro)}</p>
+         <a href="${url}" style="display:inline-block;background:#ff5c1a;color:#160b04;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:9999px;font-size:14px;">Leave feedback</a>`,
+        { brand: info.businessName, poweredBy: !info.whiteLabel },
+      ),
+    });
+
+    if (!smtp) {
+      await ctx.runMutation(internal.usage.recordEmail, {
+        businessId: info.businessId,
+      });
+    }
+    await ctx.runMutation(internal.reviews.markSent, { requestId });
+    return null;
+  },
+});
+
+/** Email an open lead a nurture follow-up (Sales Assistant). */
+export const sendLeadFollowup = internalAction({
+  args: { leadId: v.id("leads") },
+  returns: v.null(),
+  handler: async (ctx, { leadId }): Promise<null> => {
+    const info = await ctx.runQuery(internal.sales.followupContext, { leadId });
+    if (!info || !info.email) return null;
+
+    const sender = await ctx.runQuery(internal.emailSender.configForBusiness, {
+      businessId: info.businessId,
+    });
+    const smtp: SmtpConfig | undefined = sender
+      ? {
+          host: sender.host,
+          port: sender.port,
+          username: sender.username,
+          password: decryptSecret(sender.passwordEnc),
+          fromName: sender.fromName,
+          fromEmail: sender.fromEmail,
+        }
+      : undefined;
+
+    if (!smtp) {
+      const { over } = await ctx.runQuery(internal.usage.emailCapStatus, {
+        businessId: info.businessId,
+        period: usagePeriod(Date.now()),
+      });
+      if (over) return null;
+    }
+
+    const intro = `Hi ${info.name}, this is ${info.businessName} following up${info.message ? ` about "${info.message.slice(0, 80)}"` : ""}. We'd love to help — just reply and we'll take it from there.`;
+    await sendEmail({
+      to: info.email,
+      fromName: info.businessName,
+      smtp,
+      subject: `Still interested? — ${info.businessName}`,
+      text: `${intro}\n\n${info.businessName}`,
+      html: emailShell(
+        `<h1 style="margin:16px 0 8px;font-size:22px;color:#ece4d8;">Still interested?</h1>
+         <p style="margin:0 0 8px;font-size:15px;line-height:1.5;color:#b8ac9c;">${escapeHtml(intro)}</p>`,
+        { brand: info.businessName, poweredBy: !info.whiteLabel },
+      ),
+    });
+
+    if (!smtp) {
+      await ctx.runMutation(internal.usage.recordEmail, {
+        businessId: info.businessId,
+      });
+    }
+    return null;
+  },
+});
+
 /** Hydrate the booking, apply the gates, compose, send. Email isn't tier-gated
  *  (unlike SMS) — every customer with an email gets booking notices. */
 async function notifyBooking(
@@ -295,6 +376,16 @@ async function notifyBooking(
       }
     : undefined;
 
+  // Platform sends count against the plan's monthly email cap; BYO-SMTP sends
+  // use the tenant's own provider, so they're neither capped nor metered here.
+  if (!smtp) {
+    const { over } = await ctx.runQuery(internal.usage.emailCapStatus, {
+      businessId: info.businessId,
+      period: usagePeriod(Date.now()),
+    });
+    if (over) return null;
+  }
+
   await sendEmail({
     to: info.customerEmail,
     fromName: info.businessName,
@@ -311,6 +402,12 @@ async function notifyBooking(
       staffName: info.staffName,
     }),
   });
+
+  if (!smtp) {
+    await ctx.runMutation(internal.usage.recordEmail, {
+      businessId: info.businessId,
+    });
+  }
   return null;
 }
 

@@ -1,7 +1,9 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { requireMemberBySlug } from "./lib/authz";
 import { appError } from "./lib/errors";
+import { entitlementsFor } from "./entitlements";
 import { leadStatusValidator, contactSourceValidator } from "./schema";
 
 // -----------------------------------------------------------------------------
@@ -146,7 +148,7 @@ export const captureForBusiness = internalMutation({
   handler: async (ctx, args) => {
     const business = await ctx.db.get(args.businessId);
     if (!business) appError("NOT_FOUND", "That business doesn't exist.");
-    return await ctx.db.insert("leads", {
+    const leadId = await ctx.db.insert("leads", {
       businessId: args.businessId,
       name: args.name.trim() || "Unknown",
       email: args.email?.trim() || undefined,
@@ -157,6 +159,28 @@ export const captureForBusiness = internalMutation({
       source: args.source,
       updatedAt: Date.now(),
     });
+    // Sales Assistant: flag + alert on promising leads as they land.
+    const entitlements = await entitlementsFor(ctx, args.businessId);
+    if (entitlements.salesAssistantEnabled) {
+      await ctx.scheduler.runAfter(0, internal.sales.onLeadCaptured, { leadId });
+    }
+    // Integrations: push the new lead to any configured outbound CRM.
+    if (entitlements.integrationsEnabled) {
+      await ctx.scheduler.runAfter(0, internal.integrationsNode.dispatch, {
+        businessId: args.businessId,
+        event: {
+          type: "lead.created",
+          data: {
+            name: args.name.trim() || "Unknown",
+            email: args.email?.trim() || null,
+            phone: args.phone?.trim() || null,
+            message: args.message?.trim() || null,
+            source: args.source,
+          },
+        },
+      });
+    }
+    return leadId;
   },
 });
 

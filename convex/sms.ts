@@ -4,7 +4,7 @@ import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { appError } from "./lib/errors";
-import { smsEnabled, usagePeriod } from "./lib/tiers";
+import { usagePeriod } from "./lib/tiers";
 
 // -----------------------------------------------------------------------------
 // Transactional SMS (Twilio REST). A single *platform* Twilio account sends for
@@ -132,14 +132,19 @@ async function notifyBooking(
   const info = await ctx.runQuery(internal.bookings.notificationContext, {
     bookingId,
   });
-  // Gates: booking still active, plan allows SMS, and we have a usable number.
+  // Gates: booking still active and we have a usable number.
   if (!info || info.status !== "confirmed") return null;
-  if (!smsEnabled(info.tier)) return null;
   if (!info.customerPhone) return null;
   const to = toE164(info.customerPhone);
   if (!to) return null;
 
-  // Enforce the plan's monthly SMS cap.
+  // SMS only sends for projects that have the SMS Automation module enabled.
+  const entitlements = await ctx.runQuery(internal.entitlements.forBusiness, {
+    businessId: info.businessId,
+  });
+  if (!entitlements.smsAutomationEnabled) return null;
+
+  // Enforce the account's pooled monthly SMS cap (scales with the plan).
   const { over } = await ctx.runQuery(internal.usage.smsCapStatus, {
     businessId: info.businessId,
     period: usagePeriod(Date.now()),
@@ -172,4 +177,72 @@ export const sendBookingReminder = internalAction({
   args: { bookingId: v.id("bookings") },
   returns: v.null(),
   handler: (ctx, { bookingId }) => notifyBooking(ctx, bookingId, "reminder"),
+});
+
+/** Public base for review-response links (the customer-facing apex host). */
+function reviewUrl(token: string): string {
+  const base = process.env.SITE_URL ?? "https://omnivoai.ca";
+  return `${base.replace(/\/$/, "")}/r/${token}`;
+}
+
+/** Text a completed-booking customer a review request (Review Management). */
+export const sendReviewRequest = internalAction({
+  args: { requestId: v.id("reviewRequests") },
+  returns: v.null(),
+  handler: async (ctx, { requestId }): Promise<null> => {
+    const info = await ctx.runQuery(internal.reviews.requestContext, {
+      requestId,
+    });
+    if (!info || info.alreadySent || !info.customerPhone) return null;
+    const to = toE164(info.customerPhone);
+    if (!to) return null;
+
+    // Same gates as any SMS: the module must be on and the pooled cap not hit.
+    const entitlements = await ctx.runQuery(internal.entitlements.forBusiness, {
+      businessId: info.businessId,
+    });
+    if (!entitlements.smsAutomationEnabled) return null;
+    const { over } = await ctx.runQuery(internal.usage.smsCapStatus, {
+      businessId: info.businessId,
+      period: usagePeriod(Date.now()),
+    });
+    if (over) return null;
+
+    const body = `${info.businessName}: thanks for your visit, ${info.customerName}! How did we do? ${reviewUrl(info.token)}`;
+    await sendSms(to, body);
+    await ctx.runMutation(internal.usage.recordSms, {
+      businessId: info.businessId,
+    });
+    await ctx.runMutation(internal.reviews.markSent, { requestId });
+    return null;
+  },
+});
+
+/** Text an open lead a nurture follow-up (Sales Assistant). */
+export const sendLeadFollowup = internalAction({
+  args: { leadId: v.id("leads") },
+  returns: v.null(),
+  handler: async (ctx, { leadId }): Promise<null> => {
+    const info = await ctx.runQuery(internal.sales.followupContext, { leadId });
+    if (!info || !info.phone) return null;
+    const to = toE164(info.phone);
+    if (!to) return null;
+
+    const entitlements = await ctx.runQuery(internal.entitlements.forBusiness, {
+      businessId: info.businessId,
+    });
+    if (!entitlements.smsAutomationEnabled) return null;
+    const { over } = await ctx.runQuery(internal.usage.smsCapStatus, {
+      businessId: info.businessId,
+      period: usagePeriod(Date.now()),
+    });
+    if (over) return null;
+
+    const body = `Hi ${info.name}, it's ${info.businessName} following up${info.message ? ` about "${info.message.slice(0, 60)}"` : ""}. Still interested? Reply here and we'll help you get sorted.`;
+    await sendSms(to, body);
+    await ctx.runMutation(internal.usage.recordSms, {
+      businessId: info.businessId,
+    });
+    return null;
+  },
 });

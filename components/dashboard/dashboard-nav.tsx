@@ -8,14 +8,18 @@ function navItems(slug: string) {
   return [
     { label: "Overview", href: `/dashboard/${slug}`, exact: true },
     { label: "Branding", href: `/dashboard/${slug}/branding`, exact: false },
+    { label: "Locations", href: `/dashboard/${slug}/locations`, exact: false },
     { label: "Team", href: `/dashboard/${slug}/team`, exact: false },
     { label: "Services", href: `/dashboard/${slug}/services`, exact: false },
     { label: "Schedule", href: `/dashboard/${slug}/schedule`, exact: false },
     { label: "Bookings", href: `/dashboard/${slug}/bookings`, exact: false },
     { label: "Leads", href: `/dashboard/${slug}/leads`, exact: false },
+    { label: "Reviews", href: `/dashboard/${slug}/reviews`, exact: false },
+    { label: "Sales", href: `/dashboard/${slug}/sales`, exact: false },
     { label: "Knowledge", href: `/dashboard/${slug}/knowledge`, exact: false },
-    { label: "Assistant", href: `/dashboard/${slug}/assistant`, exact: false },
-    { label: "Employees", href: `/dashboard/${slug}/employees`, exact: false },
+    { label: "AI Employee", href: `/dashboard/${slug}/assistant`, exact: false },
+    { label: "Modules", href: `/dashboard/${slug}/modules`, exact: false },
+    { label: "Integrations", href: `/dashboard/${slug}/integrations`, exact: false },
     { label: "Usage", href: `/dashboard/${slug}/usage`, exact: false },
   ];
 }

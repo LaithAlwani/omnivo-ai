@@ -21,10 +21,11 @@ export const enqueueReminders = internalMutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    // Small tenant count early on; revisit with pagination if it grows.
+    // Small tenant count early on; revisit with pagination if it grows. Fan out
+    // to every project — the per-send actions re-check their own gates (email
+    // needs an address/SMTP; SMS is gated by the SMS Automation module).
     const businesses = await ctx.db.query("businesses").take(1000);
     for (const b of businesses) {
-      if (b.tier === "starter") continue; // SMS is Professional+
       await ctx.scheduler.runAfter(0, internal.crons.remindBusiness, {
         businessId: b._id,
       });
@@ -110,5 +111,11 @@ const crons = cronJobs();
 crons.interval("send booking reminders", { minutes: 30 }, internal.crons.enqueueReminders, {});
 // Keep cached free/busy fresh so slot generation reflects external calendars.
 crons.interval("refresh calendar busy", { hours: 6 }, internal.crons.refreshAllBusy, {});
+// Review requests: hourly, ask each newly-completed booking's customer how it
+// went (Review Management module; idempotent per booking).
+crons.interval("send review requests", { hours: 1 }, internal.reviews.enqueueReviewRequests, {});
+// Sales nurture: every 6h, follow up with open leads that are due (Sales
+// Assistant module; bounded + idempotent per lead).
+crons.interval("nurture open leads", { hours: 6 }, internal.sales.enqueueFollowups, {});
 
 export default crons;

@@ -4,6 +4,7 @@ import { internalMutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requirePlatformAdmin } from "./lib/authz";
 import { appError } from "./lib/errors";
+import { planForBusiness } from "./lib/accounts";
 
 // -----------------------------------------------------------------------------
 // Platform plane — cross-tenant, operators only. Every read starts with
@@ -77,16 +78,17 @@ export const listBusinesses = query({
   handler: async (ctx) => {
     await requirePlatformAdmin(ctx);
     const rows = await ctx.db.query("businesses").collect();
-    return rows
-      .sort((a, b) => b._creationTime - a._creationTime)
-      .map((b) => ({
+    const sorted = rows.sort((a, b) => b._creationTime - a._creationTime);
+    return await Promise.all(
+      sorted.map(async (b) => ({
         _id: b._id,
         name: b.name,
         slug: b.slug,
-        tier: b.tier,
+        tier: await planForBusiness(ctx, b._id),
         status: b.status,
         createdAt: b._creationTime,
-      }));
+      })),
+    );
   },
 });
 
@@ -157,7 +159,7 @@ export const businessDetail = query({
         _id: business._id,
         name: business.name,
         slug: business.slug,
-        tier: business.tier,
+        tier: await planForBusiness(ctx, business._id),
         status: business.status,
         timezone: business.timezone ?? null,
         domains: business.domains,

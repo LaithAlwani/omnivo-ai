@@ -113,6 +113,11 @@ export default function OverviewPage() {
               cap={stats.conversationCap}
             />
             <UsageMeter
+              label="Emails"
+              used={stats.emailThisMonth}
+              cap={stats.emailCap}
+            />
+            <UsageMeter
               label="SMS"
               used={stats.smsThisMonth}
               cap={stats.smsCap}

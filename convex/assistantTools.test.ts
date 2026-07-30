@@ -53,6 +53,8 @@ const call = (
     businessId,
     timezone: "UTC",
     nowMs: Date.now(),
+    // These tests exercise booking + lead tools, so grant both capabilities.
+    capabilities: ["booking", "qualification"],
     name,
     input,
   });

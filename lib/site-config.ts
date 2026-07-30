@@ -87,11 +87,11 @@ export const tools: Tool[] = [
     icon: "chart",
   },
   {
-    id: "employees",
-    name: "AI Employees",
-    tagline: "Roles, not chatbots",
+    id: "modules",
+    name: "Modular skills",
+    tagline: "One employee, more skills",
     description:
-      "Compose a Receptionist, a Sales rep, or a Reviews chaser from the same toolkit.",
+      "Switch on Booking, SMS, Reviews, Sales, or Integrations — your assistant gains the skill instantly.",
     icon: "employees",
   },
   {
@@ -156,15 +156,15 @@ export const plans: Plan[] = [
     slug: "starter",
     name: "Starter",
     kind: "platform",
-    price: "$49",
+    price: "$99",
     cadence: "/mo",
-    blurb: "For a single site that needs to stop missing leads.",
+    blurb: "One AI employee for a single site — add skills as you grow.",
     features: [
-      "AI Chat trained on your business",
-      "Booking + Google Calendar",
-      "Lead capture & inbox",
-      "Email confirmations",
-      "1,000 conversations / mo",
+      "1 project · 1 location",
+      "2,500 conversations / mo",
+      "2,500 emails / mo",
+      "Chat, knowledge & basic lead capture",
+      "Add modules à la carte",
     ],
     cta: "Start free trial",
   },
@@ -172,16 +172,15 @@ export const plans: Plan[] = [
     slug: "professional",
     name: "Professional",
     kind: "platform",
-    price: "$149",
+    price: "$249",
     cadence: "/mo",
-    blurb: "For growing teams that want the assistant to sell and follow up.",
+    blurb: "More projects, higher limits, and your brand front and center.",
     features: [
-      "Everything in Starter",
-      "SMS reminders & follow-ups",
-      "AI Employees (Sales, Reviews)",
-      "White-label branding",
-      "Custom email domain",
+      "Up to 3 projects · 3 locations each",
       "10,000 conversations / mo",
+      "10,000 emails / mo",
+      "White-label + custom email domain",
+      "Priority support",
     ],
     featured: true,
     cta: "Start free trial",
@@ -195,14 +194,56 @@ export const plans: Plan[] = [
     blurb: "For multi-location businesses and agencies reselling the platform.",
     features: [
       "Everything in Professional",
-      "Multiple locations & teams",
-      "Per-employee calendars",
-      "Priority support & SLA",
+      "More projects & locations",
       "Usage-based pricing",
+      "Priority support & SLA",
+      "All modules available",
     ],
     cta: "Talk to us",
   },
 ];
+
+// Add-on modules — the skills the one AI employee can gain. Shown as a grid
+// beneath the base plans. `price` is USD/mo, stacked on any base plan.
+export const addOnModules = [
+  {
+    name: "Booking Assistant",
+    price: 49,
+    blurb: "Live availability + booking, Google Calendar, confirmations.",
+  },
+  {
+    name: "Lead Capture & Qualification",
+    price: 15,
+    blurb: "Qualifying questions, intent detection, owner alerts.",
+  },
+  {
+    name: "SMS Automation",
+    price: 49,
+    blurb: "Reminders, follow-ups, and review texts — includes an SMS allowance.",
+  },
+  {
+    name: "Review Management",
+    price: 29,
+    blurb: "Ask happy customers for reviews; catch unhappy ones privately.",
+  },
+  {
+    name: "Sales Assistant",
+    price: 49,
+    blurb: "Qualify, book, follow up, and flag hot leads — end to end.",
+  },
+  {
+    name: "Integrations",
+    price: 49,
+    blurb: "Connect your own booking system or CRM (sync out + lookup in).",
+  },
+] as const;
+
+// Metered overage once you pass a plan's monthly allowance.
+export const overageRates = [
+  { label: "Conversations", rate: "$10 / 1,000" },
+  { label: "Emails", rate: "$5 / 1,000" },
+  { label: "SMS", rate: "$10 / 100" },
+] as const;
 
 export const seo = {
   title:

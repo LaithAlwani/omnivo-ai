@@ -54,6 +54,8 @@ type SlotArgs = {
   fromMs: number;
   days: number;
   serviceId?: Id<"services">;
+  // When set, only staff at this location are considered (multi-location books).
+  locationId?: Id<"locations">;
 };
 
 /**
@@ -96,7 +98,13 @@ async function computeSlots(
             q.eq("businessId", business._id).eq("active", true),
           )
           .collect()
-      ).filter((s) => s.bookable && !s.externalBookingUrl && performs(s));
+      ).filter(
+        (s) =>
+          s.bookable &&
+          !s.externalBookingUrl &&
+          performs(s) &&
+          (!args.locationId || s.locationId === args.locationId),
+      );
     } else {
       const s = await ctx.db.get(args.staffId);
       staffList =
@@ -142,6 +150,7 @@ export const getSlots = query({
     // When set, slot length = the service's duration and only staff who perform
     // it are considered. Omitted → the staff's default slot length.
     serviceId: v.optional(v.id("services")),
+    locationId: v.optional(v.id("locations")),
   },
   handler: async (ctx, args) => {
     const { business } = await requireMemberBySlug(ctx, args.slug);
@@ -157,6 +166,7 @@ export const getSlotsForBusiness = internalQuery({
     fromMs: v.number(),
     days: v.number(),
     serviceId: v.optional(v.id("services")),
+    locationId: v.optional(v.id("locations")),
   },
   handler: async (ctx, args) => {
     const business = await ctx.db.get(args.businessId);
