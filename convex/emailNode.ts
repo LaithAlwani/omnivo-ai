@@ -1,28 +1,14 @@
 "use node";
 
 import { v } from "convex/values";
-import { action, internalAction } from "./_generated/server";
+import { internalAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { appError } from "./lib/errors";
 import { usagePeriod, whiteLabelEnabled } from "./lib/tiers";
-import { encryptSecret, decryptSecret } from "./lib/secretsNode";
+import { sendEmail as resendSend } from "./lib/resend";
 import nodemailer from "nodemailer";
-
-// A tenant's own SMTP (bring-your-own sending domain), decrypted at send time.
-type SmtpConfig = {
-  host: string;
-  port: number;
-  username: string;
-  password: string;
-  fromName: string;
-  fromEmail: string;
-};
-
-// Per-tenant credential encryption now lives in lib/secretsNode.ts (shared with
-// Integrations). Re-exported names kept local so the rest of this file is
-// unchanged.
 
 /** Escape user/business-provided text before interpolating into email HTML. */
 function escapeHtml(s: string): string {
@@ -71,41 +57,71 @@ function fromAddress(): string {
   return m ? m[1] : raw;
 }
 
-function makeCustomTransport(c: SmtpConfig) {
-  return nodemailer.createTransport({
-    host: c.host,
-    port: c.port,
-    secure: c.port === 465,
-    auth: { user: c.username, pass: c.password },
-  });
-}
-
 const quote = (name: string) => `"${name.replace(/["\r\n]/g, "")}"`;
 
+/** Send through the platform SMTP account (Nodemailer). `fromName` overrides the
+ *  display name while keeping the platform address. */
 async function sendEmail(opts: {
   to: string;
   subject: string;
   text: string;
   html: string;
-  /** Override the sender display name (keeps the platform address). */
   fromName?: string;
-  /** Send via the tenant's own SMTP instead of the platform account. */
-  smtp?: SmtpConfig;
 }): Promise<void> {
-  const { fromName, smtp, ...mail } = opts;
-  if (smtp) {
-    await makeCustomTransport(smtp).sendMail({
-      from: `${quote(smtp.fromName)} <${smtp.fromEmail}>`,
-      ...mail,
-    });
-    return;
-  }
+  const { fromName, ...mail } = opts;
   await makeTransport().sendMail({
     from: fromName
       ? `${quote(fromName)} <${fromAddress()}>`
       : (process.env.MAIL_FROM ?? process.env.SMTP_USER),
     ...mail,
   });
+}
+
+/** Deliver a business-scoped email: enforce the pooled monthly email cap, then
+ *  send via the tenant's verified custom domain (Resend) when they have one, or
+ *  the platform SMTP account otherwise. Both paths run on our infrastructure, so
+ *  both count against the allowance. Returns whether it was sent. */
+async function deliverBusinessEmail(
+  ctx: ActionCtx,
+  opts: {
+    businessId: Id<"businesses">;
+    to: string;
+    fromName: string;
+    subject: string;
+    text: string;
+    html: string;
+  },
+): Promise<boolean> {
+  const { over } = await ctx.runQuery(internal.usage.emailCapStatus, {
+    businessId: opts.businessId,
+    period: usagePeriod(Date.now()),
+  });
+  if (over) return false;
+
+  const domain = await ctx.runQuery(internal.emailDomains.configForBusiness, {
+    businessId: opts.businessId,
+  });
+  if (domain) {
+    await resendSend({
+      from: `${quote(domain.fromName)} <${domain.fromEmail}>`,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+      text: opts.text,
+    });
+  } else {
+    await sendEmail({
+      to: opts.to,
+      fromName: opts.fromName,
+      subject: opts.subject,
+      text: opts.text,
+      html: opts.html,
+    });
+  }
+  await ctx.runMutation(internal.usage.recordEmail, {
+    businessId: opts.businessId,
+  });
+  return true;
 }
 
 // --- Password reset -----------------------------------------------------------
@@ -121,75 +137,6 @@ export const sendPasswordResetEmail = internalAction({
       html: resetEmailHtml(url),
     });
     return null;
-  },
-});
-
-// --- Custom sending domain (bring-your-own SMTP) -----------------------------
-
-/** Encrypt the SMTP password and store the sender config (manager + tier gated
- *  in the mutation). Saving always resets verification — it must be re-tested. */
-export const saveSender = action({
-  args: {
-    slug: v.string(),
-    fromName: v.string(),
-    fromEmail: v.string(),
-    host: v.string(),
-    port: v.number(),
-    username: v.string(),
-    password: v.string(),
-  },
-  returns: v.null(),
-  handler: async (ctx, args): Promise<null> => {
-    await ctx.runMutation(internal.emailSender.upsert, {
-      slug: args.slug,
-      fromName: args.fromName,
-      fromEmail: args.fromEmail,
-      host: args.host,
-      port: args.port,
-      username: args.username,
-      passwordEnc: encryptSecret(args.password),
-    });
-    return null;
-  },
-});
-
-/** Send a test email through the tenant's SMTP; on success mark it verified. */
-export const sendTest = action({
-  args: { slug: v.string(), to: v.string() },
-  returns: v.object({ ok: v.boolean() }),
-  handler: async (ctx, args): Promise<{ ok: boolean }> => {
-    const cfg = await ctx.runQuery(internal.emailSender.configForTest, {
-      slug: args.slug,
-    });
-    if (!cfg) appError("NOT_FOUND", "Add your SMTP details first, then test.");
-
-    await sendEmail({
-      to: args.to,
-      subject: `Test email from ${cfg.fromName}`,
-      text: `This is a test email sent through your configured SMTP. If you received it, your custom sending domain works.`,
-      html: bookingEmailHtml({
-        brand: cfg.fromName,
-        poweredBy: false,
-        heading: "SMTP test successful",
-        intro: `This test email was sent through your own SMTP as ${cfg.fromEmail}. If you're reading it, your custom sending domain is working.`,
-        when: new Date().toLocaleString("en-US"),
-        serviceName: null,
-        staffName: null,
-      }),
-      smtp: {
-        host: cfg.host,
-        port: cfg.port,
-        username: cfg.username,
-        password: decryptSecret(cfg.passwordEnc),
-        fromName: cfg.fromName,
-        fromEmail: cfg.fromEmail,
-      },
-    });
-
-    await ctx.runMutation(internal.emailSender.markTested, {
-      businessId: cfg.businessId,
-    });
-    return { ok: true };
   },
 });
 
@@ -223,35 +170,12 @@ export const sendReviewRequest = internalAction({
     });
     if (!info || info.alreadySent || !info.customerEmail) return null;
 
-    const sender = await ctx.runQuery(internal.emailSender.configForBusiness, {
-      businessId: info.businessId,
-    });
-    const smtp: SmtpConfig | undefined = sender
-      ? {
-          host: sender.host,
-          port: sender.port,
-          username: sender.username,
-          password: decryptSecret(sender.passwordEnc),
-          fromName: sender.fromName,
-          fromEmail: sender.fromEmail,
-        }
-      : undefined;
-
-    // Platform sends count against the pooled email cap; BYO-SMTP sends don't.
-    if (!smtp) {
-      const { over } = await ctx.runQuery(internal.usage.emailCapStatus, {
-        businessId: info.businessId,
-        period: usagePeriod(Date.now()),
-      });
-      if (over) return null;
-    }
-
     const url = reviewUrl(info.token);
     const intro = `Hi ${info.customerName}, thanks for visiting ${info.businessName}! We'd love to hear how it went.`;
-    await sendEmail({
+    const sent = await deliverBusinessEmail(ctx, {
+      businessId: info.businessId,
       to: info.customerEmail,
       fromName: info.businessName,
-      smtp,
       subject: `How was your visit to ${info.businessName}?`,
       text: `${intro}\n\nShare your feedback: ${url}\n\n${info.businessName}${info.whiteLabel ? "" : "\n\nPowered by Omnivo AI"}`,
       html: emailShell(
@@ -261,12 +185,7 @@ export const sendReviewRequest = internalAction({
         { brand: info.businessName, poweredBy: !info.whiteLabel },
       ),
     });
-
-    if (!smtp) {
-      await ctx.runMutation(internal.usage.recordEmail, {
-        businessId: info.businessId,
-      });
-    }
+    if (!sent) return null;
     await ctx.runMutation(internal.reviews.markSent, { requestId });
     return null;
   },
@@ -280,33 +199,11 @@ export const sendLeadFollowup = internalAction({
     const info = await ctx.runQuery(internal.sales.followupContext, { leadId });
     if (!info || !info.email) return null;
 
-    const sender = await ctx.runQuery(internal.emailSender.configForBusiness, {
-      businessId: info.businessId,
-    });
-    const smtp: SmtpConfig | undefined = sender
-      ? {
-          host: sender.host,
-          port: sender.port,
-          username: sender.username,
-          password: decryptSecret(sender.passwordEnc),
-          fromName: sender.fromName,
-          fromEmail: sender.fromEmail,
-        }
-      : undefined;
-
-    if (!smtp) {
-      const { over } = await ctx.runQuery(internal.usage.emailCapStatus, {
-        businessId: info.businessId,
-        period: usagePeriod(Date.now()),
-      });
-      if (over) return null;
-    }
-
     const intro = `Hi ${info.name}, this is ${info.businessName} following up${info.message ? ` about "${info.message.slice(0, 80)}"` : ""}. We'd love to help — just reply and we'll take it from there.`;
-    await sendEmail({
+    await deliverBusinessEmail(ctx, {
+      businessId: info.businessId,
       to: info.email,
       fromName: info.businessName,
-      smtp,
       subject: `Still interested? — ${info.businessName}`,
       text: `${intro}\n\n${info.businessName}`,
       html: emailShell(
@@ -315,12 +212,6 @@ export const sendLeadFollowup = internalAction({
         { brand: info.businessName, poweredBy: !info.whiteLabel },
       ),
     });
-
-    if (!smtp) {
-      await ctx.runMutation(internal.usage.recordEmail, {
-        businessId: info.businessId,
-      });
-    }
     return null;
   },
 });
@@ -361,35 +252,12 @@ async function notifyBooking(
   // customer.
   const whiteLabel = whiteLabelEnabled(info.tier);
 
-  // If the tenant has a verified custom sending domain, send via their SMTP.
-  const sender = await ctx.runQuery(internal.emailSender.configForBusiness, {
+  // Sends via the tenant's verified custom domain (Resend) if set, else the
+  // platform SMTP account — both metered against the pooled email allowance.
+  await deliverBusinessEmail(ctx, {
     businessId: info.businessId,
-  });
-  const smtp: SmtpConfig | undefined = sender
-    ? {
-        host: sender.host,
-        port: sender.port,
-        username: sender.username,
-        password: decryptSecret(sender.passwordEnc),
-        fromName: sender.fromName,
-        fromEmail: sender.fromEmail,
-      }
-    : undefined;
-
-  // Platform sends count against the plan's monthly email cap; BYO-SMTP sends
-  // use the tenant's own provider, so they're neither capped nor metered here.
-  if (!smtp) {
-    const { over } = await ctx.runQuery(internal.usage.emailCapStatus, {
-      businessId: info.businessId,
-      period: usagePeriod(Date.now()),
-    });
-    if (over) return null;
-  }
-
-  await sendEmail({
     to: info.customerEmail,
     fromName: info.businessName,
-    smtp,
     subject,
     text: `${intro}\n\n${lines.join("\n")}\n\nSee you then!\n${info.businessName}${whiteLabel ? "" : "\n\nPowered by Omnivo AI"}`,
     html: bookingEmailHtml({
@@ -402,12 +270,6 @@ async function notifyBooking(
       staffName: info.staffName,
     }),
   });
-
-  if (!smtp) {
-    await ctx.runMutation(internal.usage.recordEmail, {
-      businessId: info.businessId,
-    });
-  }
   return null;
 }
 

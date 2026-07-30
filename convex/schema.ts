@@ -405,19 +405,32 @@ export default defineSchema({
     .index("by_token", ["token"])
     .index("by_booking", ["bookingId"]),
 
-  // Per-business custom sending domain (bring-your-own SMTP), Professional+.
-  // The password is stored AES-256-GCM encrypted (see emailNode.ts); `verified`
-  // flips true after a successful test send. One row per business.
-  emailSenders: defineTable({
+  // Per-business custom sending domain (Professional+), verified through Resend.
+  // The tenant adds DNS records (SPF/DKIM) to authenticate their domain; once
+  // Resend reports it verified, their booking/review/follow-up emails send from
+  // it via our Resend account. No credentials are stored — only Resend's domain
+  // id + the DNS records to display. One row per business.
+  emailDomains: defineTable({
     businessId: v.id("businesses"),
+    domain: v.string(), // e.g. "mail.acme.com"
     fromName: v.string(),
-    fromEmail: v.string(),
-    host: v.string(),
-    port: v.number(),
-    username: v.string(),
-    passwordEnc: v.string(), // "ivB64:tagB64:ciphertextB64"
-    verified: v.boolean(),
-    lastTestedAt: v.optional(v.number()),
+    fromEmail: v.string(), // must be at `domain`
+    resendDomainId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("verified"),
+      v.literal("failed"),
+    ),
+    // DNS records the tenant must add, cached from Resend for the dashboard.
+    records: v.array(
+      v.object({
+        type: v.string(), // "TXT" | "MX" | "CNAME"
+        name: v.string(),
+        value: v.string(),
+        priority: v.optional(v.number()),
+      }),
+    ),
+    lastCheckedAt: v.optional(v.number()),
   }).index("by_business", ["businessId"]),
 
   // Integrations — connections to a project's own external systems (the
