@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// Section segment → label. Mirrors the sidebar nav so crumbs read the same.
+// Segment → label. Mirrors the sidebar nav (and the Business sub-tabs) so crumbs
+// read the same. "business" is the grouping section; the five keys under it are
+// its sub-tabs and appear as a second crumb.
 const SECTION_LABELS: Record<string, string> = {
+  business: "Business",
   branding: "Branding",
   locations: "Locations",
   team: "Team",
@@ -48,23 +51,33 @@ export function Breadcrumbs({
   const rest = pathname.startsWith(base)
     ? pathname.slice(base.length).split("/").filter(Boolean)
     : [];
-  const section = rest[0];
-  const sectionLabel = section ? (SECTION_LABELS[section] ?? section) : null;
+
+  // Build the trailing crumbs from the path segments after the business base,
+  // each with a cumulative href. The last one is the current page (unlinked);
+  // any before it (e.g. "Business" ahead of "Team") stay clickable.
+  const sectionCrumbs = rest.map((seg, i) => ({
+    label: SECTION_LABELS[seg] ?? seg,
+    href:
+      i === rest.length - 1 ? null : `${base}/${rest.slice(0, i + 1).join("/")}`,
+  }));
+  const hasSection = sectionCrumbs.length > 0;
 
   const crumbLink =
-    "max-w-[18ch] truncate transition-colors hover:text-bone";
-  const crumbCurrent = "max-w-[18ch] truncate text-bone";
+    "max-w-[18ch] shrink-0 truncate transition-colors hover:text-bone";
+  const crumbCurrent = "max-w-[18ch] shrink-0 truncate text-bone";
 
   return (
     <nav
       aria-label="Breadcrumb"
-      className="mb-6 flex items-center gap-1.5 text-sm text-muted"
+      // Scroll horizontally rather than wrap/overflow when the trail is long on
+      // a phone (e.g. Dashboard › Business › Team). Scrollbar hidden.
+      className="mb-6 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap text-sm text-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       <Link href="/dashboard" className={crumbLink}>
         Dashboard
       </Link>
       <Chevron />
-      {sectionLabel ? (
+      {hasSection ? (
         <Link href={base} className={crumbLink}>
           {businessName}
         </Link>
@@ -73,14 +86,20 @@ export function Breadcrumbs({
           {businessName}
         </span>
       )}
-      {sectionLabel && (
-        <>
+      {sectionCrumbs.map((crumb, i) => (
+        <span key={i} className="flex shrink-0 items-center gap-1.5">
           <Chevron />
-          <span className={crumbCurrent} aria-current="page">
-            {sectionLabel}
-          </span>
-        </>
-      )}
+          {crumb.href ? (
+            <Link href={crumb.href} className={crumbLink}>
+              {crumb.label}
+            </Link>
+          ) : (
+            <span className={crumbCurrent} aria-current="page">
+              {crumb.label}
+            </span>
+          )}
+        </span>
+      ))}
     </nav>
   );
 }
