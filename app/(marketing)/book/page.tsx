@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Button } from "@/components/ui/button";
+import { DemoRequestForm } from "@/components/sections/demo-request-form";
 
 export const metadata: Metadata = {
   title: "Book a demo",
@@ -7,7 +7,12 @@ export const metadata: Metadata = {
     "See Omnivo AI answer, book, and capture a lead with your own business. A fifteen-minute walkthrough.",
 };
 
-// Phase M placeholder. The real booking flow (calendar + slots) ships in Phase 2.
+// The demo form talks to Convex through the no-auth public client, which is
+// constructed from NEXT_PUBLIC_CONVEX_URL. Render this page per-request rather
+// than prerendering it at build so a build without that env can't crash here —
+// every other consumer of that client is request-time (dynamic) too.
+export const dynamic = "force-dynamic";
+
 export default function BookPage() {
   return (
     <section className="section flex min-h-[70vh] items-center pt-32 sm:pt-40">
@@ -21,17 +26,7 @@ export default function BookPage() {
           Fifteen minutes: we&rsquo;ll connect a sample of your knowledge and let the
           assistant answer, book, and capture a lead live. Tell us where to reach you.
         </p>
-        <form className="mx-auto mt-10 flex max-w-md flex-col gap-3">
-          <input
-            type="email"
-            required
-            placeholder="you@business.com"
-            className="h-12 rounded-full border border-line-strong bg-surface px-5 text-sm text-bone placeholder:text-faint focus-visible:border-ember"
-          />
-          <Button href="/book" size="lg" className="w-full">
-            Request a demo
-          </Button>
-        </form>
+        <DemoRequestForm />
         <p className="mt-5 font-mono text-xs text-faint">
           We&rsquo;ll reply within one business day.
         </p>

@@ -21,6 +21,7 @@ import type * as businesses from "../businesses.js";
 import type * as calendar from "../calendar.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
+import type * as demoRequests from "../demoRequests.js";
 import type * as emailDomains from "../emailDomains.js";
 import type * as emailNode from "../emailNode.js";
 import type * as embedKeys from "../embedKeys.js";
@@ -81,6 +82,7 @@ declare const fullApi: ApiFromModules<{
   calendar: typeof calendar;
   conversations: typeof conversations;
   crons: typeof crons;
+  demoRequests: typeof demoRequests;
   emailDomains: typeof emailDomains;
   emailNode: typeof emailNode;
   embedKeys: typeof embedKeys;

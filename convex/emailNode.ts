@@ -67,6 +67,7 @@ async function sendEmail(opts: {
   text: string;
   html: string;
   fromName?: string;
+  replyTo?: string;
 }): Promise<void> {
   const { fromName, ...mail } = opts;
   await makeTransport().sendMail({
@@ -136,6 +137,56 @@ export const sendPasswordResetEmail = internalAction({
       text: `Reset your Omnivo AI password using this link (valid for 30 minutes):\n\n${url}\n\nIf you didn't request this, you can safely ignore this email.`,
       html: resetEmailHtml(url),
     });
+    return null;
+  },
+});
+
+// --- Demo request (marketing "Book a demo" form) ------------------------------
+
+/** Where new demo requests are routed. Overridable per-deployment. */
+function supportAddress(): string {
+  return process.env.SUPPORT_EMAIL ?? "support@omnivoai.ca";
+}
+
+/** Notify the team of a new demo request and send the requester a copy. The team
+ *  notification is the one that must land, so it's awaited first; the requester's
+ *  copy is best-effort and never fails the submission on its own. */
+export const sendDemoRequest = internalAction({
+  args: {
+    name: v.string(),
+    email: v.string(),
+    subject: v.string(),
+    phone: v.string(),
+    message: v.string(),
+  },
+  returns: v.null(),
+  handler: async (_ctx, args): Promise<null> => {
+    const heading = args.subject
+      ? `Demo request — ${args.name}: ${args.subject}`
+      : `Demo request — ${args.name}`;
+
+    // Team notification. Reply-To is the requester so a reply goes straight back
+    // to them, not to the platform address.
+    await sendEmail({
+      to: supportAddress(),
+      replyTo: args.email,
+      subject: heading,
+      text: demoRequestTeamText(args),
+      html: demoRequestTeamHtml(args),
+    });
+
+    // Requester's copy — best effort. A bad address here shouldn't surface as a
+    // failure once the team has already been notified.
+    try {
+      await sendEmail({
+        to: args.email,
+        subject: "We got your demo request — Omnivo AI",
+        text: demoRequestClientText(args),
+        html: demoRequestClientHtml(args),
+      });
+    } catch (err) {
+      console.error("demo-request client copy failed:", err);
+    }
     return null;
   },
 });
@@ -343,6 +394,102 @@ function bookingEmailHtml(opts: {
   `,
     { brand: opts.brand, poweredBy: opts.poweredBy },
   );
+}
+
+/** Escape then turn newlines into <br> for multi-line values in HTML emails. */
+function escapeMultiline(s: string): string {
+  return escapeHtml(s).replace(/\r?\n/g, "<br>");
+}
+
+type DemoRequest = {
+  name: string;
+  email: string;
+  subject: string;
+  phone: string;
+  message: string;
+};
+
+/** Internal notification — the branded card the team receives. */
+function demoRequestTeamHtml(r: DemoRequest): string {
+  const row = (label: string, value: string) =>
+    `<tr><td style="padding:7px 0;font-size:13px;color:#9c9184;width:88px;vertical-align:top;">${label}</td><td style="padding:7px 0;font-size:15px;color:#ece4d8;font-weight:500;">${escapeHtml(value)}</td></tr>`;
+  const rows = [
+    row("Name", r.name),
+    // Keep the address clickable for a quick reply.
+    `<tr><td style="padding:7px 0;font-size:13px;color:#9c9184;width:88px;vertical-align:top;">Email</td><td style="padding:7px 0;font-size:15px;font-weight:500;"><a href="mailto:${escapeHtml(r.email)}" style="color:#ff8a4c;text-decoration:none;">${escapeHtml(r.email)}</a></td></tr>`,
+    r.phone ? row("Phone", r.phone) : "",
+    r.subject ? row("Subject", r.subject) : "",
+  ].join("");
+
+  const messageBlock = r.message
+    ? `<div style="margin:4px 0 0;font-size:13px;color:#9c9184;">Message</div>
+       <div style="margin:6px 0 0;padding:14px 16px;background:#0c0a08;border:1px solid rgba(236,228,216,0.12);border-radius:10px;font-size:14px;line-height:1.6;color:#ece4d8;">${escapeMultiline(r.message)}</div>`
+    : "";
+
+  return emailShell(`
+    <h1 style="margin:16px 0 8px;font-size:22px;line-height:1.2;color:#ece4d8;font-weight:600;">New demo request</h1>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#9c9184;">Someone asked to see Omnivo AI on their business. Reply to this email to reach them directly.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid rgba(236,228,216,0.12);border-bottom:1px solid rgba(236,228,216,0.12);margin:0 0 ${messageBlock ? "20px" : "4px"};">
+      ${rows}
+    </table>
+    ${messageBlock}
+  `);
+}
+
+function demoRequestTeamText(r: DemoRequest): string {
+  return [
+    "New demo request",
+    "",
+    `Name: ${r.name}`,
+    `Email: ${r.email}`,
+    r.phone ? `Phone: ${r.phone}` : null,
+    r.subject ? `Subject: ${r.subject}` : null,
+    r.message ? `\nMessage:\n${r.message}` : null,
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+}
+
+/** Confirmation copy — what the requester receives, echoing their details. */
+function demoRequestClientHtml(r: DemoRequest): string {
+  const row = (label: string, value: string) =>
+    `<tr><td style="padding:6px 0;font-size:13px;color:#9c9184;width:88px;vertical-align:top;">${label}</td><td style="padding:6px 0;font-size:14px;color:#ece4d8;">${escapeHtml(value)}</td></tr>`;
+  const rows = [
+    r.subject ? row("Subject", r.subject) : "",
+    r.phone ? row("Phone", r.phone) : "",
+    r.message ? row("Message", r.message) : "",
+  ].join("");
+  const recap = rows
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid rgba(236,228,216,0.12);border-bottom:1px solid rgba(236,228,216,0.12);margin:0 0 20px;">${rows}</table>`
+    : "";
+
+  return emailShell(`
+    <h1 style="margin:16px 0 8px;font-size:24px;line-height:1.2;color:#ece4d8;font-weight:600;">Thanks, ${escapeHtml(r.name)} — we got it.</h1>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#9c9184;">Your demo request is in. We&rsquo;ll reply within one business day to set up a fifteen-minute walkthrough on your own business. Here&rsquo;s what you sent us:</p>
+    ${recap}
+    <p style="margin:0;font-size:13px;line-height:1.6;color:#6b6357;">Need to add something? Just reply to this email.</p>
+  `);
+}
+
+function demoRequestClientText(r: DemoRequest): string {
+  return [
+    `Thanks, ${r.name} — we got your demo request.`,
+    "",
+    "We'll reply within one business day to set up a fifteen-minute walkthrough on your own business.",
+    "",
+    "What you sent us:",
+    `- Name: ${r.name}`,
+    `- Email: ${r.email}`,
+    r.phone ? `- Phone: ${r.phone}` : null,
+    r.subject ? `- Subject: ${r.subject}` : null,
+    r.message ? `- Message: ${r.message}` : null,
+    "",
+    "Need to add something? Just reply to this email.",
+    "",
+    "Omnivo AI",
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
 }
 
 function resetEmailHtml(url: string): string {
