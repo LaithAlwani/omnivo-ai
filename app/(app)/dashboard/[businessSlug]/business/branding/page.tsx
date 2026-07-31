@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { errorText } from "@/lib/errors";
@@ -196,6 +197,84 @@ export default function BrandingPage() {
       </div>
 
       <EmailDomainCard />
+
+      {/* Deleting is irreversible and owner-only. */}
+      {b.role === "owner" && <DangerZone slug={b.slug} name={b.name} />}
+    </div>
+  );
+}
+
+function DangerZone({ slug, name }: { slug: string; name: string }) {
+  const router = useRouter();
+  const deleteBusiness = useMutation(api.businesses.deleteBusiness);
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onDelete() {
+    setError(null);
+    setPending(true);
+    try {
+      await deleteBusiness({ slug });
+      router.push("/dashboard");
+    } catch (err) {
+      setError(errorText(err));
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="mt-14 rounded-xl border border-ember-deep/40 bg-ember-deep/[0.06] p-6">
+      <h2 className="font-display text-xl text-bone">Danger zone</h2>
+      <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted">
+        Permanently delete <span className="text-bone">{name}</span> and
+        everything in it — team members, bookings, leads, services, knowledge,
+        integrations, calendars, and all history. Other members lose access and
+        the embedded assistant stops working. This cannot be undone.
+      </p>
+
+      {!open ? (
+        <button
+          onClick={() => setOpen(true)}
+          className="mt-4 h-10 rounded-full border border-ember-deep/60 px-5 text-sm text-ember-deep transition-colors hover:bg-ember-deep hover:text-bone"
+        >
+          Delete this business
+        </button>
+      ) : (
+        <div className="mt-5">
+          <label className="block text-sm text-bone-dim">
+            Type <span className="font-mono text-bone">{name}</span> to confirm
+          </label>
+          <input
+            autoFocus
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={name}
+            className="mt-2 h-11 w-full max-w-sm rounded-lg border border-line-strong bg-surface px-4 text-sm text-bone placeholder:text-faint focus-visible:border-ember-deep focus-visible:outline-none"
+          />
+          {error && <p className="mt-2 text-sm text-ember-deep">{error}</p>}
+          <div className="mt-4 flex items-center gap-2">
+            <button
+              onClick={onDelete}
+              disabled={pending || confirmText !== name}
+              className="h-10 rounded-full bg-ember-deep px-5 text-sm font-medium text-bone transition-colors hover:bg-ember disabled:opacity-50"
+            >
+              {pending ? "Deleting…" : "Permanently delete"}
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
+                setConfirmText("");
+                setError(null);
+              }}
+              className="h-10 rounded-full px-4 text-sm text-muted transition-colors hover:text-bone"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

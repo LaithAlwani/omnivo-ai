@@ -7,6 +7,7 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Doc, TableNames } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireMember } from "./lib/authz";
 import { appError } from "./lib/errors";
@@ -459,6 +460,208 @@ export const revealData = internalQuery({
       embedKey: business.embedKey ?? null,
       storedHash,
     };
+  },
+});
+
+// --- Deletion (owner only) ---------------------------------------------------
+
+/**
+ * Permanently delete a business and everything scoped to it. Only the owner may
+ * do this. Access is revoked and the business row dropped synchronously (so it
+ * vanishes from the dashboard and its embed key stops resolving immediately);
+ * the bulk tenant data is reclaimed by a scheduled, batched purge because a
+ * busy tenant can exceed a single transaction's document/byte limits.
+ *
+ * The owning ACCOUNT is intentionally kept — it's the subscription, shared with
+ * the owner's other projects, and its pooled usage counters (keyed by account,
+ * not business) are left untouched. Rate-limiter component state keyed by this
+ * business isn't deleted here; it lives in a separate component and self-expires.
+ */
+export const deleteBusiness = mutation({
+  args: { slug: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const business = await ctx.db
+      .query("businesses")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+    if (!business) appError("NOT_FOUND", "That business doesn't exist.");
+    await requireMember(ctx, business._id, "owner");
+
+    // Its only stored asset is the widget logo — remove it from file storage.
+    const logo = business.branding.logoStorageId;
+    if (logo) await ctx.storage.delete(logo);
+
+    // Revoke access first, then drop the business row itself.
+    const memberships = await ctx.db
+      .query("memberships")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .collect();
+    for (const m of memberships) await ctx.db.delete(m._id);
+    await ctx.db.delete(business._id);
+
+    // Cascade-delete the rest in the background, in batches.
+    await ctx.scheduler.runAfter(0, internal.businesses.purgeBusinessData, {
+      businessId: business._id,
+    });
+    return null;
+  },
+});
+
+// Per-invocation delete budget. Small enough to stay well within a mutation's
+// write limits; the job reschedules itself until the tenant is fully drained.
+const PURGE_BATCH = 300;
+
+/**
+ * Internal: delete every remaining row scoped to a (now-removed) business, a
+ * bounded number per call, rescheduling until nothing is left. Covers every
+ * business-linked table. `usageCounters`/`auditLog` match only rows that carry
+ * this `businessId` — account-pooled counters and platform-level audit rows
+ * (no businessId) are left alone.
+ */
+export const purgeBusinessData = internalMutation({
+  args: { businessId: v.id("businesses") },
+  returns: v.null(),
+  handler: async (ctx, { businessId }): Promise<null> => {
+    let budget = PURGE_BATCH;
+    const drain = async <T extends TableNames>(
+      rows: Doc<T>[],
+    ): Promise<void> => {
+      for (const r of rows) {
+        await ctx.db.delete(r._id);
+        budget--;
+      }
+    };
+
+    // High-volume tables first, then the small configuration/child tables. Every
+    // index below has businessId as its first field, so the eq range is valid.
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("bookings")
+          .withIndex("by_business_start", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("leads")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("conversations")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("calendarBusy")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("blackouts")
+          .withIndex("by_business_start", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("reviewRequests")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("usageCounters")
+          .withIndex("by_business_period", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("auditLog")
+          .withIndex("by_business_ts", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("staff")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("services")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("locations")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("availabilityRules")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("calendarConnections")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("tenantFeatures")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("emailDomains")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("integrations")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+    if (budget > 0)
+      await drain(
+        await ctx.db
+          .query("knowledge")
+          .withIndex("by_business", (q) => q.eq("businessId", businessId))
+          .take(budget),
+      );
+
+    // Hit the cap → there may be more; come back in a fresh transaction.
+    if (budget <= 0) {
+      await ctx.scheduler.runAfter(0, internal.businesses.purgeBusinessData, {
+        businessId,
+      });
+    }
+    return null;
   },
 });
 
