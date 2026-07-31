@@ -20,6 +20,7 @@ const APP_HOST = `app.${APEX}`;
 const isAppRoute = createRouteMatcher([
   "/dashboard(.*)",
   "/platform(.*)",
+  "/create(.*)",
   "/signin(.*)",
   "/forgot-password(.*)",
   "/reset-password(.*)",
@@ -32,7 +33,11 @@ const isSharedRoute = createRouteMatcher([
   "/api(.*)",
 ]);
 
-const isProtected = createRouteMatcher(["/dashboard(.*)", "/platform(.*)"]);
+const isProtected = createRouteMatcher([
+  "/dashboard(.*)",
+  "/platform(.*)",
+  "/create(.*)",
+]);
 const isSignIn = createRouteMatcher(["/signin(.*)"]);
 
 export default convexAuthNextjsMiddleware(async (request, { convexAuth }) => {

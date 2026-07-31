@@ -26,6 +26,27 @@ import { tierValidator } from "./schema";
 
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])?$/;
 
+// Optional onboarding profile from the create wizard — pre-configures the
+// assistant (branding) and seeds its knowledge so the bot can answer from day
+// one. Everything is optional; sensible defaults fill any gaps.
+const profileValidator = v.optional(
+  v.object({
+    assistantName: v.optional(v.string()),
+    welcomeMsg: v.optional(v.string()),
+    tone: v.optional(v.string()),
+    about: v.optional(v.string()),
+    hours: v.optional(v.string()),
+    services: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          description: v.optional(v.string()),
+        }),
+      ),
+    ),
+  }),
+);
+
 /**
  * Create a business for the signed-in user (who becomes its owner). Generates
  * the embed key here (needs Web Crypto), then provisions rows in one mutation.
@@ -35,6 +56,7 @@ export const create = action({
     name: v.string(),
     slug: v.string(),
     tier: v.optional(tierValidator),
+    profile: profileValidator,
   },
   returns: v.object({
     businessId: v.id("businesses"),
@@ -63,6 +85,7 @@ export const create = action({
         embedKeyPrefix: prefix,
         embedKeyHash: hash,
         embedKey,
+        profile: args.profile,
       });
 
     return { businessId, slug, embedKey };
@@ -78,6 +101,7 @@ export const provision = internalMutation({
     embedKeyPrefix: v.string(),
     embedKeyHash: v.string(),
     embedKey: v.string(),
+    profile: profileValidator,
   },
   returns: v.id("businesses"),
   handler: async (ctx, args) => {
@@ -102,6 +126,7 @@ export const provision = internalMutation({
       );
     }
 
+    const p = args.profile;
     const businessId = await ctx.db.insert("businesses", {
       name: args.name,
       slug: args.slug,
@@ -115,9 +140,10 @@ export const provision = internalMutation({
         primaryColor: "#FF5C1A",
         accentColor: "#FFB347",
         position: "right",
-        assistantName: "Assistant",
-        welcomeMsg: "Hi! How can I help you today?",
-        tone: "friendly, concise, professional",
+        // Wizard values override the defaults when provided.
+        assistantName: p?.assistantName?.trim() || "Assistant",
+        welcomeMsg: p?.welcomeMsg?.trim() || "Hi! How can I help you today?",
+        tone: p?.tone?.trim() || "friendly, concise, professional",
       },
       aiSettings: {
         persona: `A helpful assistant for ${args.name}.`,
@@ -153,6 +179,30 @@ export const provision = internalMutation({
       active: true,
       order: 0,
     });
+
+    // Seed the assistant's knowledge from the wizard so it can answer right
+    // away. Only written when the wizard actually supplied something — otherwise
+    // the overview's onboarding checklist still nudges them to add it.
+    const services = (p?.services ?? [])
+      .map((s) => ({
+        name: s.name.trim(),
+        description: s.description?.trim() || undefined,
+      }))
+      .filter((s) => s.name.length > 0);
+    const about = p?.about?.trim() ?? "";
+    const hours = p?.hours?.trim() ?? "";
+    if (about || hours || services.length > 0) {
+      await ctx.db.insert("knowledge", {
+        businessId,
+        about,
+        services,
+        pricing: "",
+        hours,
+        locations: [],
+        faq: [],
+        policies: "",
+      });
+    }
 
     return businessId;
   },
