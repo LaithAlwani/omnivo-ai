@@ -1,167 +1,347 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useBusiness } from "@/components/dashboard/business-context";
 import { WidgetKeyCard } from "@/components/dashboard/widget-key-card";
-import { UsageMeter } from "@/components/dashboard/usage-meter";
 
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-full border border-line-strong px-3 py-1 font-mono text-xs uppercase tracking-wider text-bone-dim">
-      {children}
-    </span>
-  );
+const TRIAL_DAYS = 30;
+const DAY = 86_400_000;
+
+/** One emphasized word in the greeting. */
+function Em({ children }: { children: React.ReactNode }) {
+  return <span className="italic text-ember">{children}</span>;
 }
 
-function Stat({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-line bg-surface/50 p-5">
-      <div className="font-display text-3xl text-bone">{value}</div>
-      <div className="mt-1 font-mono text-xs uppercase tracking-wider text-faint">
-        {label}
-      </div>
-      {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
-    </div>
-  );
-}
-
-const PIPELINE = [
-  { key: "new", label: "New" },
-  { key: "contacted", label: "Contacted" },
-  { key: "qualified", label: "Qualified" },
-  { key: "won", label: "Won" },
-  { key: "lost", label: "Lost" },
-] as const;
+// -----------------------------------------------------------------------------
+// The dashboard home: a trial meter, a 2×2 metric grid, this month's usage, and
+// an onboarding checklist — all wired to analytics.overview + the business
+// context. The trial countdown is derived from the account's age (no billing
+// backing yet), shown only while the business is on a trial.
+// -----------------------------------------------------------------------------
 
 export default function OverviewPage() {
   const b = useBusiness();
   const stats = useQuery(api.analytics.overview, { slug: b.slug });
+  // One stable "now" for the whole render (matches the bookings page pattern).
+  const [nowMs] = useState(() => Date.now());
 
   const loading = stats === undefined;
-  const num = (x: number | undefined) => (loading ? "—" : String(x ?? 0));
+  const tier = b.tier ?? "starter";
+
+  const isTrial = b.status === "trial";
+  const daysLeft = Math.max(
+    0,
+    TRIAL_DAYS - Math.floor((nowMs - b._creationTime) / DAY),
+  );
+  const trialEnded = isTrial && daysLeft <= 0;
+
+  const noActivity =
+    !loading &&
+    stats.conversations === 0 &&
+    stats.upcomingBookings === 0 &&
+    stats.totalLeads === 0;
+
+  // Greeting reflects the real state of the account.
+  let greet: React.ReactNode = b.name;
+  let greetSub = "";
+  if (!loading) {
+    if (noActivity) {
+      greet = <>Your assistant is <Em>ready</Em>.</>;
+      greetSub =
+        "It hasn’t spoken to anyone yet — a few steps and it can start answering for you.";
+    } else if (stats.openLeads > 0) {
+      const n = stats.openLeads;
+      greet = (
+        <>
+          {n} {n === 1 ? "lead" : "leads"} <Em>need</Em> you.
+        </>
+      );
+      greetSub = `${stats.conversationsThisMonth} conversation${stats.conversationsThisMonth === 1 ? "" : "s"} this month · ${stats.upcomingBookings} upcoming booking${stats.upcomingBookings === 1 ? "" : "s"}.`;
+    } else {
+      greet = <>Your assistant is <Em>humming</Em>.</>;
+      greetSub = `${stats.conversationsThisMonth} conversation${stats.conversationsThisMonth === 1 ? "" : "s"} this month · ${stats.upcomingBookings} upcoming booking${stats.upcomingBookings === 1 ? "" : "s"}.`;
+    }
+  }
+
+  const cards = loading
+    ? []
+    : [
+        {
+          v: stats.conversationsThisMonth,
+          label: "Conversations",
+          sub:
+            stats.conversationsThisMonth > 0
+              ? `${stats.conversationsThisWeek} this week`
+              : "Add your first answer",
+        },
+        {
+          v: stats.upcomingBookings,
+          label: "Bookings",
+          sub:
+            stats.upcomingBookings > 0
+              ? `${stats.bookingsThisWeek} in the next 7 days`
+              : "Connect a calendar",
+        },
+        {
+          v: stats.openLeads,
+          label: "Open leads",
+          sub:
+            stats.openLeads > 0
+              ? `${stats.totalLeads} total`
+              : "Share your assistant",
+        },
+        {
+          v: stats.wonLeads,
+          label: "Won",
+          sub:
+            stats.totalLeads > 0
+              ? `${Math.round((stats.wonLeads / stats.totalLeads) * 100)}% of leads`
+              : "Nothing closed yet",
+        },
+      ];
+
+  const steps = loading
+    ? []
+    : [
+        {
+          t: "Teach it about your business",
+          d: "Hours, services, pricing, service area",
+          done: stats.knowledgeReady,
+          href: `/dashboard/${b.slug}/business/knowledge`,
+        },
+        {
+          t: "Connect your calendar",
+          d: "So it can book without asking you",
+          done: stats.calendarConnected,
+          href: `/dashboard/${b.slug}/schedule`,
+        },
+        {
+          t: "Put it on your website",
+          d: "One line of code, or share a link",
+          done: stats.conversations > 0,
+          href: "#install",
+        },
+      ];
+  // Once the basics are done, nudge review requests (if that module is off).
+  if (!loading && steps.every((s) => s.done) && !stats.reviewsEnabled) {
+    steps.push({
+      t: "Turn on review requests",
+      d: "Ask happy customers automatically",
+      done: false,
+      href: `/dashboard/${b.slug}/modules`,
+    });
+  }
+  const allDone = steps.length > 0 && steps.every((s) => s.done);
 
   return (
-    <div className="max-w-3xl">
-      <h1 className="font-display text-4xl text-bone">{b.name}</h1>
-      <p className="mt-1 font-mono text-xs text-faint">/{b.slug}</p>
+    <div className="max-w-2xl">
+      <p className="font-mono text-[11px] tracking-wide text-faint">
+        /{b.slug} · {tier}
+      </p>
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        <Badge>{b.tier}</Badge>
-        <Badge>{b.status}</Badge>
-        <Badge>you: {b.role}</Badge>
-      </div>
+      <h1 className="mt-4 max-w-[20ch] font-display text-3xl leading-[1.16] text-bone">
+        {greet}
+      </h1>
+      {greetSub && (
+        <p className="mt-2.5 max-w-[42ch] text-sm leading-relaxed text-muted">
+          {greetSub}
+        </p>
+      )}
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
-          label="Conversations"
-          value={num(stats?.conversationsThisMonth)}
-          hint={
-            loading
-              ? undefined
-              : stats?.conversationCap
-                ? `of ${stats.conversationCap.toLocaleString()} this month`
-                : `this month · ${stats?.conversationsThisWeek ?? 0} this week`
-          }
-        />
-        <Stat
-          label="Upcoming bookings"
-          value={num(stats?.upcomingBookings)}
-          hint={
-            loading
-              ? undefined
-              : `${stats?.bookingsThisWeek ?? 0} in the next 7 days`
-          }
-        />
-        <Stat
-          label="Open leads"
-          value={num(stats?.openLeads)}
-          hint={loading ? undefined : `${stats?.totalLeads ?? 0} total`}
-        />
-        <Stat label="Won" value={num(stats?.wonLeads)} hint="Converted leads" />
+      {/* Trial meter — the signature. Shown while on a trial; otherwise a
+          compact plan/status line. */}
+      {isTrial ? (
+        <div className="mt-7">
+          <div className="flex h-[22px] items-end gap-[3px]" aria-hidden>
+            {Array.from({ length: TRIAL_DAYS }, (_, i) => {
+              const spent = TRIAL_DAYS - daysLeft;
+              let cls: string;
+              if (trialEnded || i < spent - 1) {
+                cls = "h-[9px] bg-line";
+              } else if (i === spent - 1) {
+                cls =
+                  "h-full bg-bone shadow-[0_0_14px_rgba(255,92,26,0.55)]";
+              } else {
+                cls = "h-full bg-ember";
+              }
+              return (
+                <span key={i} className={`flex-1 rounded-[2px] ${cls}`} />
+              );
+            })}
+          </div>
+          <div className="mt-3 flex items-baseline justify-between font-mono text-[11px] tracking-[0.07em]">
+            {trialEnded ? (
+              <>
+                <span className="text-ember">TRIAL ENDED</span>
+                <Link
+                  href={`/dashboard/${b.slug}/usage`}
+                  className="text-faint transition-colors hover:text-bone"
+                >
+                  CHOOSE A PLAN →
+                </Link>
+              </>
+            ) : (
+              <>
+                <span className="text-bone">
+                  TRIAL ·{" "}
+                  <span className="text-ember">
+                    {daysLeft === 1 ? "LAST DAY" : `${daysLeft} DAYS`}
+                  </span>
+                  {daysLeft === 1 ? "" : " LEFT"}
+                </span>
+                <span className="text-faint">{tier.toUpperCase()}</span>
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-7 font-mono text-[11px] uppercase tracking-[0.07em]">
+          <span
+            className={
+              b.status === "suspended" ? "text-ember-deep" : "text-ember"
+            }
+          >
+            {b.status}
+          </span>
+          <span className="text-faint"> · {tier} plan</span>
+        </div>
+      )}
+
+      {/* 2×2 metric grid */}
+      <div className="mt-7 grid grid-cols-2 gap-3">
+        {loading
+          ? Array.from({ length: 4 }, (_, i) => (
+              <div
+                key={i}
+                className="min-h-[128px] rounded-xl border border-line bg-surface/40"
+              />
+            ))
+          : cards.map((c) => {
+              const idle = c.v === 0;
+              return (
+                <div
+                  key={c.label}
+                  className={`relative flex min-h-[128px] flex-col overflow-hidden rounded-xl border p-4 ${
+                    idle ? "border-line bg-surface/40" : "border-line bg-surface"
+                  }`}
+                >
+                  {!idle && (
+                    <span className="absolute inset-x-4 top-0 h-px bg-gradient-to-r from-ember to-transparent" />
+                  )}
+                  <div
+                    className={`font-display text-[2.4rem] leading-none ${
+                      idle ? "text-faint" : "text-bone"
+                    }`}
+                  >
+                    {c.v}
+                  </div>
+                  <div className="mt-auto pt-3 font-mono text-[10px] uppercase tracking-[0.11em] text-muted">
+                    {c.label}
+                  </div>
+                  <div
+                    className={`mt-1 text-[11.5px] leading-snug ${
+                      idle ? "text-ember/90" : "text-faint"
+                    }`}
+                  >
+                    {c.sub}
+                  </div>
+                </div>
+              );
+            })}
       </div>
 
       {/* Usage this month */}
-      <div className="mt-4 rounded-xl border border-line bg-surface/40 p-5">
-        <div className="flex items-baseline justify-between">
-          <div className="font-mono text-xs uppercase tracking-wider text-faint">
-            Usage this month
-          </div>
+      <div className="mt-3 rounded-xl border border-line bg-surface p-4">
+        <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.11em] text-muted">
+          <span>Usage this month</span>
           <Link
             href={`/dashboard/${b.slug}/usage`}
-            className="text-xs text-ember transition-colors hover:text-flare"
+            className="text-ember transition-colors hover:text-flare"
           >
             Plan &amp; usage →
           </Link>
         </div>
-        {loading ? (
-          <p className="mt-4 text-sm text-faint">Loading…</p>
-        ) : (
-          <div className="mt-4 space-y-4">
-            <UsageMeter
-              label="Conversations"
-              used={stats.conversationsThisMonth}
-              cap={stats.conversationCap}
-            />
-            <UsageMeter
-              label="Emails"
-              used={stats.emailThisMonth}
-              cap={stats.emailCap}
-            />
-            <UsageMeter
-              label="SMS"
-              used={stats.smsThisMonth}
-              cap={stats.smsCap}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Lead pipeline breakdown */}
-      <div className="mt-4 rounded-xl border border-line bg-surface/40 p-5">
-        <div className="font-mono text-xs uppercase tracking-wider text-faint">
-          Lead pipeline
-        </div>
-        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
-          {PIPELINE.map((s) => (
-            <div key={s.key} className="min-w-16">
-              <div className="font-display text-2xl text-bone">
-                {loading ? "—" : (stats?.leadsByStatus[s.key] ?? 0)}
-              </div>
-              <div className="mt-0.5 font-mono text-[0.65rem] uppercase tracking-wider text-faint">
-                {s.label}
-              </div>
+        <div className="mt-3">
+          {loading ? (
+            <div className="h-8" />
+          ) : (
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm text-muted">Conversations</span>
+              <span className="font-mono text-sm text-bone-dim">
+                {stats.conversationsThisMonth.toLocaleString()}
+                {stats.conversationCap
+                  ? ` / ${stats.conversationCap.toLocaleString()}`
+                  : ""}
+              </span>
             </div>
-          ))}
+          )}
+          {!loading && stats.conversationCap ? (
+            <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-line">
+              <div
+                className="h-full rounded-full bg-ember transition-[width] duration-700"
+                style={{
+                  width: `${Math.min(100, Math.round((stats.conversationsThisMonth / stats.conversationCap) * 100))}%`,
+                }}
+              />
+            </div>
+          ) : null}
         </div>
       </div>
 
-      {!loading &&
-        stats?.totalLeads === 0 &&
-        stats?.upcomingBookings === 0 &&
-        stats?.conversations === 0 && (
-        <p className="mt-6 text-sm leading-relaxed text-muted">
-          No activity yet. Set up branding, add your team, and connect your
-          knowledge from the sidebar — metrics light up here once your assistant
-          goes live.
-        </p>
-      )}
-      {stats?.capped && (
-        <p className="mt-3 text-xs text-faint">
-          Counts shown up to 1,000 per metric.
-        </p>
+      {/* Next steps / onboarding */}
+      {!loading && (
+        <div className="mt-8">
+          <div className="border-b border-line pb-2.5 font-mono text-[10px] uppercase tracking-[0.11em] text-muted">
+            {allDone ? "You’re set up" : "Next"}
+          </div>
+          {allDone ? (
+            <p className="py-4 text-sm text-muted">
+              Everything’s connected — your assistant is live. Metrics update
+              here as it works.
+            </p>
+          ) : (
+            steps.map((st, i) => (
+              <Link
+                key={st.t}
+                href={st.href}
+                className="group flex items-center gap-3.5 border-b border-line py-3.5"
+              >
+                <span
+                  className={`w-4 flex-none font-mono text-[10.5px] ${
+                    st.done ? "text-ember" : "text-faint"
+                  }`}
+                >
+                  {st.done ? "✓" : String(i + 1).padStart(2, "0")}
+                </span>
+                <span className="min-w-0">
+                  <span
+                    className={`block text-sm transition-colors ${
+                      st.done
+                        ? "text-muted line-through decoration-faint"
+                        : "text-bone group-hover:text-ember"
+                    }`}
+                  >
+                    {st.t}
+                  </span>
+                  <span className="mt-0.5 block text-[11.5px] text-faint">
+                    {st.d}
+                  </span>
+                </span>
+                <span className="ml-auto flex-none text-faint transition-colors group-hover:text-bone">
+                  →
+                </span>
+              </Link>
+            ))
+          )}
+        </div>
       )}
 
-      <div className="mt-8">
+      {/* Widget install — kept accessible from the home; the "put it on your
+          website" step links here. */}
+      <div id="install" className="mt-8 scroll-mt-24">
         <WidgetKeyCard />
       </div>
     </div>

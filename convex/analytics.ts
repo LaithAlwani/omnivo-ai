@@ -3,6 +3,7 @@ import { query } from "./_generated/server";
 import { requireMemberBySlug } from "./lib/authz";
 import { conversationCap, emailCap, smsCap, usagePeriod } from "./lib/tiers";
 import { planForBusiness } from "./lib/accounts";
+import { entitlementsFor } from "./entitlements";
 
 // -----------------------------------------------------------------------------
 // Dashboard analytics. Counts come from bounded index reads capped at CAP — when
@@ -82,7 +83,21 @@ export const overview = query({
       : null;
     const conversationsThisMonth = usage?.conversations ?? 0;
 
+    // Onboarding signals for the overview checklist — cheap existence checks.
+    const knowledgeRow = await ctx.db
+      .query("knowledge")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .unique();
+    const calendarConn = await ctx.db
+      .query("calendarConnections")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .first();
+    const entitlements = await entitlementsFor(ctx, business._id);
+
     return {
+      knowledgeReady: knowledgeRow !== null,
+      calendarConnected: calendarConn !== null,
+      reviewsEnabled: entitlements.reviewManagementEnabled,
       conversations,
       conversationsThisWeek,
       conversationsThisMonth,
