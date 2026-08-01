@@ -12,10 +12,25 @@ import {
 const inputCls =
   "h-10 w-full rounded-lg border border-line-strong bg-surface px-3 text-sm text-bone placeholder:text-faint focus-visible:border-ember";
 
+// Feature flag — custom email domains stay dormant until this is explicitly
+// enabled. It's a heavier, ops-y feature (Resend domain management + DNS +
+// deliverability support) that only pays off once billing + real demand exist,
+// so it's hidden by default. Flip it on by setting the build-time env
+// NEXT_PUBLIC_ENABLE_EMAIL_DOMAINS=true (Vercel env → redeploy).
+const EMAIL_DOMAINS_ENABLED =
+  process.env.NEXT_PUBLIC_ENABLE_EMAIL_DOMAINS === "true";
+
+/** Custom email domain card — rendered only when the feature flag is on. The
+ *  thin wrapper keeps the flag check out of the hook-calling body. */
+export function EmailDomainCard() {
+  if (!EMAIL_DOMAINS_ENABLED) return null;
+  return <EmailDomainCardInner />;
+}
+
 // Custom sending domain, verified through Resend. Managers add their domain, add
 // the DNS records we surface, then verify — after which booking/review/follow-up
 // emails send from their address.
-export function EmailDomainCard() {
+function EmailDomainCardInner() {
   const b = useBusiness();
   const canEdit = isManagerRole(b.role);
   const data = useQuery(api.emailDomains.get, { slug: b.slug });
