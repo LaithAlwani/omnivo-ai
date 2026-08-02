@@ -339,23 +339,45 @@ export default function CreateBusinessPage() {
                     </p>
                   </div>
                   <Field label="Services" optional>
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-3">
                       {services.map((s, i) => (
-                        <div key={i} className="flex gap-2">
-                          <input
-                            className={inputCls}
-                            value={s.name}
-                            placeholder="Service name"
-                            onChange={(e) =>
-                              setServices((prev) =>
-                                prev.map((x, j) =>
-                                  j === i ? { ...x, name: e.target.value } : x,
-                                ),
-                              )
-                            }
-                          />
-                          <input
-                            className={inputCls}
+                        <div
+                          key={i}
+                          className="rounded-lg border border-line bg-surface/30 p-3"
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              className={`${inputCls} min-w-0 flex-1`}
+                              value={s.name}
+                              placeholder="Service name"
+                              onChange={(e) =>
+                                setServices((prev) =>
+                                  prev.map((x, j) =>
+                                    j === i ? { ...x, name: e.target.value } : x,
+                                  ),
+                                )
+                              }
+                            />
+                            {services.length > 1 && (
+                              <button
+                                type="button"
+                                aria-label="Remove service"
+                                onClick={() =>
+                                  setServices((prev) =>
+                                    prev.filter((_, j) => j !== i),
+                                  )
+                                }
+                                className="grid h-11 w-11 flex-none place-items-center rounded-lg border border-line-strong text-muted transition-colors hover:border-ember-deep/60 hover:text-ember-deep"
+                              >
+                                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+                                  <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                          <textarea
+                            rows={2}
+                            className={`${areaCls} mt-2`}
                             value={s.description}
                             placeholder="Short description (optional)"
                             onChange={(e) =>
@@ -368,22 +390,6 @@ export default function CreateBusinessPage() {
                               )
                             }
                           />
-                          {services.length > 1 && (
-                            <button
-                              type="button"
-                              aria-label="Remove service"
-                              onClick={() =>
-                                setServices((prev) =>
-                                  prev.filter((_, j) => j !== i),
-                                )
-                              }
-                              className="grid h-11 w-11 flex-none place-items-center rounded-lg border border-line-strong text-muted transition-colors hover:border-ember-deep/60 hover:text-ember-deep"
-                            >
-                              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6">
-                                <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
-                              </svg>
-                            </button>
-                          )}
                         </div>
                       ))}
                       <button

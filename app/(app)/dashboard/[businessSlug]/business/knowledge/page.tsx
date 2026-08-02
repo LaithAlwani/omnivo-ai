@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { errorText } from "@/lib/errors";
+import { knowledgeSize, MAX_KNOWLEDGE_CHARS } from "@/convex/lib/leoPrompt";
 import {
   useBusiness,
   isManagerRole,
@@ -314,16 +315,27 @@ export default function KnowledgePage() {
       </fieldset>
 
       {canEdit && (
-        <div className="sticky bottom-0 mt-8 flex items-center gap-3 border-t border-line bg-ink/80 py-4 backdrop-blur">
+        <div className="sticky bottom-0 mt-8 flex flex-wrap items-center gap-3 border-t border-line bg-ink/80 py-4 backdrop-blur">
           <button
             onClick={onSave}
-            disabled={pending}
+            disabled={pending || knowledgeSize(form) > MAX_KNOWLEDGE_CHARS}
             className="h-11 rounded-full bg-ember px-6 text-sm font-medium text-[#160b04] transition-colors hover:bg-flare disabled:opacity-60"
           >
             {pending ? "Saving…" : "Save knowledge"}
           </button>
           {saved && <span className="text-sm text-flare">Saved ✓</span>}
           {error && <span className="text-sm text-ember-deep">{error}</span>}
+          <span
+            className={`ml-auto font-mono text-xs ${
+              knowledgeSize(form) > MAX_KNOWLEDGE_CHARS
+                ? "text-ember-deep"
+                : "text-faint"
+            }`}
+            title="The whole knowledge base is given to the assistant, so it has a size limit."
+          >
+            {knowledgeSize(form).toLocaleString()} /{" "}
+            {MAX_KNOWLEDGE_CHARS.toLocaleString()}
+          </span>
         </div>
       )}
     </div>

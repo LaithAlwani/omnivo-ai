@@ -22,6 +22,24 @@ export type KnowledgeContent = {
   policies: string;
 };
 
+// The whole knowledge base is injected into every prompt (no retrieval yet), so
+// we bound it: the save path rejects anything larger, and the prompt builder
+// truncates as a defensive net (for pre-existing/imported rows). ~40k chars is
+// ~10k tokens — far more than a curated form needs, but a hard ceiling against
+// runaway growth. When knowledge routinely approaches this, move to embeddings +
+// vector-search retrieval (inject only the top-k relevant chunks).
+export const MAX_KNOWLEDGE_CHARS = 40_000;
+
+/** Total size of a knowledge base's free-text content (for the save-time cap). */
+export function knowledgeSize(k: KnowledgeContent): number {
+  let n = k.about.length + k.pricing.length + k.hours.length + k.policies.length;
+  for (const s of k.services) n += s.name.length + (s.description?.length ?? 0);
+  for (const l of k.locations)
+    n += (l.name?.length ?? 0) + l.address.length + (l.phone?.length ?? 0);
+  for (const f of k.faq) n += f.q.length + f.a.length;
+  return n;
+}
+
 function knowledgeBlock(k: KnowledgeContent): string {
   const parts: string[] = [];
   if (k.about.trim()) parts.push(`About:\n${k.about.trim()}`);
@@ -52,7 +70,12 @@ function knowledgeBlock(k: KnowledgeContent): string {
       "FAQ:\n" + k.faq.map((f) => `Q: ${f.q}\nA: ${f.a}`).join("\n\n"),
     );
   }
-  return parts.join("\n\n");
+  const block = parts.join("\n\n");
+  // Defensive cap — the more important sections are rendered first, so any
+  // overflow (usually long FAQs) is what gets trimmed.
+  return block.length <= MAX_KNOWLEDGE_CHARS
+    ? block
+    : block.slice(0, MAX_KNOWLEDGE_CHARS) + "\n\n…(knowledge truncated)";
 }
 
 export function buildSystemPrompt(

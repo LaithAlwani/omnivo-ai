@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireMemberBySlug } from "./lib/authz";
+import { appError } from "./lib/errors";
+import { knowledgeSize, MAX_KNOWLEDGE_CHARS } from "./lib/leoPrompt";
 
 // -----------------------------------------------------------------------------
 // Per-tenant knowledge — the facts the assistant answers from. One row per
@@ -41,6 +43,15 @@ export const update = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { business } = await requireMemberBySlug(ctx, args.slug, "admin");
+
+    // The whole knowledge base is injected into every prompt, so bound its size.
+    if (knowledgeSize(args.knowledge) > MAX_KNOWLEDGE_CHARS) {
+      appError(
+        "INVALID_INPUT",
+        `Your knowledge base is too large (max ~${MAX_KNOWLEDGE_CHARS.toLocaleString()} characters). Trim it, or reach out about large knowledge bases.`,
+      );
+    }
+
     const existing = await ctx.db
       .query("knowledge")
       .withIndex("by_business", (q) => q.eq("businessId", business._id))
