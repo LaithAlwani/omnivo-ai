@@ -2,6 +2,7 @@ import { cronJobs } from "convex/server";
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { resolveSmsSettings } from "./lib/smsSettings";
 
 // -----------------------------------------------------------------------------
 // Scheduled fan-out. Every job is kept small and orchestrated top-down —
@@ -9,8 +10,6 @@ import { internal } from "./_generated/api";
 // loop, so a single tenant's data can never blow a transaction (plan risk #2).
 // -----------------------------------------------------------------------------
 
-// How far ahead of an appointment we text the reminder.
-const REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Safety bound on rows touched per tenant per tick (fan-out keeps this ample).
 const PER_TENANT_LIMIT = 200;
 
@@ -40,13 +39,17 @@ export const remindBusiness = internalMutation({
   returns: v.null(),
   handler: async (ctx, { businessId }) => {
     const now = Date.now();
+    // The reminder lead time is per-business (default 24h).
+    const business = await ctx.db.get(businessId);
+    const settings = resolveSmsSettings(business?.smsSettings);
+    const windowMs = settings.reminderLeadHours * 60 * 60 * 1000;
     const rows = await ctx.db
       .query("bookings")
       .withIndex("by_business_start", (q) =>
         q
           .eq("businessId", businessId)
           .gt("start", now)
-          .lte("start", now + REMINDER_WINDOW_MS),
+          .lte("start", now + windowMs),
       )
       .take(PER_TENANT_LIMIT);
 

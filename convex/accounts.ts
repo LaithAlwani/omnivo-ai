@@ -6,12 +6,15 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireMemberBySlug } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { planValidator } from "./schema";
+import { accountLocationLimit } from "./lib/accounts";
+import { syncEntitlementsToPlan } from "./entitlements";
 import {
-  accountProjectLimit,
-  accountLocationLimit,
-} from "./lib/accounts";
-import {
+  type Plan,
   tierLimits,
+  locationLimit,
+  planPrice,
+  effectiveMonthlyCents,
+  FOUNDING_SLOTS,
   usagePeriod,
   overageUnits,
   overageCostCents,
@@ -28,7 +31,7 @@ import {
 export async function getOrCreateAccount(
   ctx: MutationCtx,
   ownerUserId: Id<"users">,
-  plan: "starter" | "professional" | "enterprise",
+  plan: Plan,
 ): Promise<Id<"accounts">> {
   const existing = await ctx.db
     .query("accounts")
@@ -64,11 +67,6 @@ export const myAccount = query({
       .unique();
     if (!account) return null;
 
-    const projects = await ctx.db
-      .query("businesses")
-      .withIndex("by_account", (q) => q.eq("accountId", account._id))
-      .collect();
-
     const period = usagePeriod(Date.now());
     const counter = await ctx.db
       .query("usageCounters")
@@ -89,19 +87,40 @@ export const myAccount = query({
       overageCostCents("emails", overageUnits(emailUsed, limits.emailsPerMonth)) +
       overageCostCents("sms", overageUnits(smsUsed, limits.smsPerMonth));
 
+    const cadence = account.billingCadence ?? "monthly";
+    const founding = account.foundingPartner ?? false;
+    const includedLocations = locationLimit(account.plan);
+    const businessCount = (
+      await ctx.db
+        .query("businesses")
+        .withIndex("by_account", (q) => q.eq("accountId", account._id))
+        .collect()
+    ).length;
+
     return {
       plan: account.plan,
       period,
-      projects: {
-        used: projects.length,
-        max: accountProjectLimit(account),
-      },
+      // Back-compat: one business per account now, so max is always 1.
+      projects: { used: businessCount, max: 1 },
       locationLimitPerProject: accountLocationLimit(account),
+      // Billing snapshot for the account/usage view.
+      billing: {
+        cadence,
+        founding,
+        priceMonthly: planPrice(account.plan),
+        effectiveMonthlyCents: effectiveMonthlyCents(account.plan, {
+          founding,
+          cadence,
+        }),
+        commitmentEndsAt: account.commitmentEndsAt ?? null,
+      },
+      locations: {
+        included: includedLocations,
+        paid: account.paidLocations ?? 0,
+        cap: accountLocationLimit(account),
+      },
       usage: {
-        conversations: {
-          used: convUsed,
-          cap: limits.conversationsPerMonth,
-        },
+        conversations: { used: convUsed, cap: limits.conversationsPerMonth },
         emails: { used: emailUsed, cap: limits.emailsPerMonth },
         sms: { used: smsUsed, cap: limits.smsPerMonth },
       },
@@ -116,16 +135,87 @@ export const myAccount = query({
   },
 });
 
-/** Change the plan on the account owning `slug` (manager only; interim manual
- *  control until Stripe drives this). */
+/** How many Founding Partner slots remain (for the marketing banner). */
+export const foundingSlotsLeft = query({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const founders = await ctx.db
+      .query("accounts")
+      .filter((q) => q.eq(q.field("foundingPartner"), true))
+      .collect();
+    return Math.max(0, FOUNDING_SLOTS - founders.length);
+  },
+});
+
+/** Change the plan on the account owning `slug` and re-sync its business's
+ *  modules to the new tier's bundle (manager only; interim control until
+ *  Stripe). Refuses a downgrade before an annual commitment ends. */
 export const setPlan = mutation({
   args: { slug: v.string(), plan: planValidator },
   returns: v.null(),
   handler: async (ctx, { slug, plan }) => {
     const { business } = await requireMemberBySlug(ctx, slug, "owner");
-    if (!business.accountId) appError("NOT_FOUND", "This project has no account yet.");
+    if (!business.accountId) appError("NOT_FOUND", "This account has no plan yet.");
+    const account = await ctx.db.get(business.accountId);
+    if (!account) appError("NOT_FOUND", "Account not found.");
+
+    // Annual accounts can't downgrade before the commitment ends.
+    const rank: Record<Plan, number> = {
+      starter: 0,
+      professional: 1,
+      premium: 2,
+      enterprise: 3,
+    };
+    const isDowngrade = rank[plan] < rank[account.plan];
+    if (
+      isDowngrade &&
+      account.commitmentEndsAt &&
+      account.commitmentEndsAt > Date.now()
+    ) {
+      appError(
+        "FORBIDDEN",
+        "This plan is on an annual commitment and can't be downgraded until the term ends.",
+      );
+    }
+
     await ctx.db.patch(business.accountId, { plan });
+    // Every business under the account picks up the new tier's modules.
+    const businesses = await ctx.db
+      .query("businesses")
+      .withIndex("by_account", (q) => q.eq("accountId", business.accountId!))
+      .collect();
+    for (const b of businesses) {
+      await syncEntitlementsToPlan(ctx, b._id, plan);
+    }
     return null;
+  },
+});
+
+/** Internal: grant Founding Partner status to an account, capped at the first
+ *  FOUNDING_SLOTS accounts. Platform/manual until Stripe. */
+export const markFoundingPartner = internalMutation({
+  args: { accountId: v.id("accounts") },
+  returns: v.object({ granted: v.boolean(), slotsLeft: v.number() }),
+  handler: async (ctx, { accountId }) => {
+    const account = await ctx.db.get(accountId);
+    if (!account) appError("NOT_FOUND", "Account not found.");
+    if (account.foundingPartner) {
+      const founders = await ctx.db
+        .query("accounts")
+        .filter((q) => q.eq(q.field("foundingPartner"), true))
+        .collect();
+      return { granted: true, slotsLeft: Math.max(0, FOUNDING_SLOTS - founders.length) };
+    }
+    const founders = await ctx.db
+      .query("accounts")
+      .filter((q) => q.eq(q.field("foundingPartner"), true))
+      .collect();
+    if (founders.length >= FOUNDING_SLOTS) {
+      return { granted: false, slotsLeft: 0 };
+    }
+    await ctx.db.patch(accountId, { foundingPartner: true });
+    return { granted: true, slotsLeft: FOUNDING_SLOTS - founders.length - 1 };
   },
 });
 
@@ -211,5 +301,40 @@ export const backfillAccounts = internalMutation({
     }
 
     return { accountsCreated, businessesLinked, countersRekeyed };
+  },
+});
+
+// -----------------------------------------------------------------------------
+// Migration: move to the tiered bundles. Legacy "professional" accounts had the
+// premium feature set (white-label + all modules), so map them → "premium" to
+// avoid a silent downgrade, then re-sync every business's module entitlements to
+// its account plan. Idempotent.
+// -----------------------------------------------------------------------------
+export const retierAndResync = internalMutation({
+  args: {},
+  returns: v.object({ retiered: v.number(), resynced: v.number() }),
+  handler: async (ctx) => {
+    let retiered = 0;
+    let resynced = 0;
+
+    const accounts = await ctx.db.query("accounts").collect();
+    for (const account of accounts) {
+      let plan = account.plan;
+      if (plan === "professional") {
+        plan = "premium";
+        await ctx.db.patch(account._id, { plan });
+        retiered++;
+      }
+      const businesses = await ctx.db
+        .query("businesses")
+        .withIndex("by_account", (q) => q.eq("accountId", account._id))
+        .collect();
+      for (const b of businesses) {
+        await syncEntitlementsToPlan(ctx, b._id, plan);
+        resynced++;
+      }
+    }
+
+    return { retiered, resynced };
   },
 });

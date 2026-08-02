@@ -6,7 +6,7 @@ import { ContactSection } from "@/components/sections/contact-section";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Omnivo AI pricing — one AI employee from $99/mo, plus add-on modules for booking, SMS, reviews, sales, and integrations. Free trial on every plan.",
+    "Omnivo AI pricing — one AI employee from $299/mo across three bundled tiers (Starter, Professional, Premium). Founding Partner pricing for the first 10. Free trial on every plan.",
 };
 
 export default function ServicesPage() {

@@ -1,10 +1,14 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useState } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { errorText } from "@/lib/errors";
 import { useBusiness } from "@/components/dashboard/business-context";
 import { UsageMeter } from "@/components/dashboard/usage-meter";
 import { plans } from "@/lib/site-config";
+
+const SELECTABLE_PLANS = plans.filter((p) => p.slug !== "enterprise");
 
 const FEATURES = [
   { key: "whiteLabel", label: "White-label branding" },
@@ -27,6 +31,25 @@ export default function UsagePage() {
   const b = useBusiness();
   const data = useQuery(api.tiers.planUsage, { slug: b.slug });
   const plan = plans.find((p) => p.slug === b.tier);
+  const setPlan = useMutation(api.accounts.setPlan);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const isOwner = b.role === "owner";
+
+  async function changePlan(target: string) {
+    setError(null);
+    setBusy(target);
+    try {
+      await setPlan({
+        slug: b.slug,
+        plan: target as "starter" | "professional" | "premium",
+      });
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   if (data === undefined) {
     return <div className="text-sm text-faint">Loading…</div>;
@@ -115,23 +138,65 @@ export default function UsagePage() {
         </ul>
       </div>
 
-      {/* Upgrade */}
-      {b.tier !== "enterprise" && (
-        <div className="mt-4 rounded-xl border border-ember/40 bg-ember-soft p-5">
-          <p className="text-sm text-bone">
-            Need more? Upgrade for higher limits, SMS, white-label, and AI
-            Employees.
-          </p>
-          <a
-            href="https://omnivoai.ca/#pricing"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 inline-flex h-10 items-center rounded-full bg-ember px-5 text-sm font-medium text-[#160b04] transition-colors hover:bg-flare"
-          >
-            See plans
-          </a>
+      {/* Change plan */}
+      <div className="mt-4 rounded-xl border border-line bg-surface/40 p-6">
+        <div className="font-mono text-xs uppercase tracking-wider text-faint">
+          Change plan
         </div>
-      )}
+        <p className="mt-1 text-sm text-muted">
+          Each tier bundles more modules, higher limits, and more locations.
+          Changing your plan updates what your assistant can do right away.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {SELECTABLE_PLANS.map((p) => {
+            const current = p.slug === b.tier;
+            return (
+              <div
+                key={p.slug}
+                className={`rounded-xl border p-4 ${
+                  current
+                    ? "border-ember/50 bg-ember-soft/40"
+                    : "border-line bg-surface/50"
+                }`}
+              >
+                <div className="font-display text-lg text-bone">{p.name}</div>
+                <div className="mt-0.5">
+                  <span className="font-display text-xl text-bone">{p.price}</span>
+                  <span className="text-xs text-faint">{p.cadence}</span>
+                </div>
+                <button
+                  disabled={!isOwner || current || busy !== null}
+                  onClick={() => changePlan(p.slug)}
+                  className={`mt-3 h-9 w-full rounded-full text-sm font-medium transition-colors disabled:opacity-50 ${
+                    current
+                      ? "border border-line-strong text-faint"
+                      : "bg-ember text-[#160b04] hover:bg-flare"
+                  }`}
+                >
+                  {current
+                    ? "Current"
+                    : busy === p.slug
+                      ? "Switching…"
+                      : "Switch"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        {!isOwner && (
+          <p className="mt-3 text-xs text-faint">
+            Only the account owner can change the plan.
+          </p>
+        )}
+        {error && <p className="mt-3 text-sm text-ember-deep">{error}</p>}
+        <p className="mt-3 text-xs text-faint">
+          Multi-location or agency?{" "}
+          <a href="/book" className="text-ember underline hover:text-flare">
+            Talk to us about Enterprise
+          </a>
+          .
+        </p>
+      </div>
     </div>
   );
 }

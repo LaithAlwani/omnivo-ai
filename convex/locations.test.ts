@@ -49,16 +49,24 @@ test("location limit is enforced per plan", async () => {
     asUser.mutation(api.locations.add, { slug: "co", name: "Second" }),
   ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
 
-  // Bumping the account to Professional lifts the ceiling to 3.
+  // Professional includes 2 locations → one more, then blocked.
   await asUser.mutation(api.accounts.setPlan, { slug: "co", plan: "professional" });
   await asUser.mutation(api.locations.add, { slug: "co", name: "Second" });
-  await asUser.mutation(api.locations.add, { slug: "co", name: "Third" });
   await expect(
-    asUser.mutation(api.locations.add, { slug: "co", name: "Fourth" }),
+    asUser.mutation(api.locations.add, { slug: "co", name: "Third" }),
+  ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+
+  // Premium includes 5 → up to five, then blocked.
+  await asUser.mutation(api.accounts.setPlan, { slug: "co", plan: "premium" });
+  await asUser.mutation(api.locations.add, { slug: "co", name: "Third" });
+  await asUser.mutation(api.locations.add, { slug: "co", name: "Fourth" });
+  await asUser.mutation(api.locations.add, { slug: "co", name: "Fifth" });
+  await expect(
+    asUser.mutation(api.locations.add, { slug: "co", name: "Sixth" }),
   ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
 
   const locations = await asUser.query(api.locations.list, { slug: "co" });
-  expect(locations).toHaveLength(3);
+  expect(locations).toHaveLength(5);
 });
 
 // Slot generation only considers staff at the requested location.

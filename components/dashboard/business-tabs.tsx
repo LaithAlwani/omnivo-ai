@@ -12,7 +12,10 @@ const TABS = [
   { label: "Locations", segment: "locations" },
   { label: "Team", segment: "team" },
   { label: "Services", segment: "services" },
+  { label: "Schedule", segment: "schedule" },
+  { label: "Messaging", segment: "messaging" },
   { label: "Knowledge", segment: "knowledge" },
+  { label: "Playground", segment: "playground" },
 ] as const;
 
 /** Horizontal sub-tab bar for the Business section, rendered by the section

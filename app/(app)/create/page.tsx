@@ -13,8 +13,8 @@ import { Logo } from "@/components/layout/logo";
 //   2. Knowledge — services + hours (so the bot can answer)
 //   3. Assistant — name, welcome message, tone
 // Everything after step 1 is optional; the goal is the fastest path to a live,
-// useful bot. A starter account is capped at one project — over the cap, this
-// page shows an upgrade prompt instead of the form.
+// useful bot. An account runs exactly one business — if it already has one, this
+// page points back to the dashboard instead of showing the form.
 
 const STEPS = ["Business", "Knowledge", "Assistant"] as const;
 
@@ -39,13 +39,17 @@ export default function CreateBusinessPage() {
   const account = useQuery(api.accounts.myAccount);
   const businesses = useQuery(api.businesses.listMine);
   const createBusiness = useAction(api.businesses.create);
+  const enrichFromWebsite = useAction(api.enrichNode.fromWebsite);
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
+  const [website, setWebsite] = useState("");
   const [about, setAbout] = useState("");
   const [hours, setHours] = useState("");
+  const [pricing, setPricing] = useState("");
+  const [faq, setFaq] = useState<{ q: string; a: string }[]>([]);
   const [services, setServices] = useState<Service[]>([
     { name: "", description: "" },
   ]);
@@ -55,8 +59,43 @@ export default function CreateBusinessPage() {
   );
   const [tone, setTone] = useState("friendly, concise, professional");
 
+  const [enriching, setEnriching] = useState(false);
+  const [enrichNote, setEnrichNote] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Autofill the wizard from the company's website — best-effort, all editable.
+  async function autofill() {
+    if (!website.trim()) return;
+    setError(null);
+    setEnrichNote(null);
+    setEnriching(true);
+    try {
+      const p = await enrichFromWebsite({ url: website.trim() });
+      if (p.businessName && !name.trim()) {
+        setName(p.businessName);
+        if (!slugTouched) setSlug(slugify(p.businessName));
+      }
+      if (p.about) setAbout(p.about);
+      if (p.hours) setHours(p.hours);
+      if (p.pricing) setPricing(p.pricing);
+      if (p.faq.length) setFaq(p.faq);
+      if (p.services.length) {
+        setServices(
+          p.services.map((s) => ({ name: s.name, description: s.description })),
+        );
+      }
+      if (p.tone) setTone(p.tone);
+      if (p.businessName) setAssistantName(`${p.businessName} Assistant`);
+      setEnrichNote(
+        `Read ${p.pagesRead} page${p.pagesRead === 1 ? "" : "s"} and filled in what we found — review each step and tweak anything before finishing.`,
+      );
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setEnriching(false);
+    }
+  }
   const [result, setResult] = useState<{ slug: string; embedKey: string } | null>(
     null,
   );
@@ -83,6 +122,10 @@ export default function CreateBusinessPage() {
           tone,
           about: about.trim() || undefined,
           hours: hours.trim() || undefined,
+          pricing: pricing.trim() || undefined,
+          faq: faq
+            .map((f) => ({ q: f.q.trim(), a: f.a.trim() }))
+            .filter((f) => f.q && f.a),
           services: cleanServices,
         },
       });
@@ -149,24 +192,24 @@ export default function CreateBusinessPage() {
         ) : loadingGate ? (
           <p className="mt-12 text-sm text-faint">Loading…</p>
         ) : atLimit ? (
-          /* Over the project limit ------------------------------------- */
+          /* Already have a business ------------------------------------ */
           <div className="mt-12">
-            <span className="eyebrow">Upgrade needed</span>
+            <span className="eyebrow">You’re all set</span>
             <h1 className="mt-4 font-display text-3xl text-bone">
-              You’ve used your {max} project{max === 1 ? "" : "s"}.
+              You already have a business.
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-muted">
-              The {account?.plan} plan includes {max} project
-              {max === 1 ? "" : "s"}. Upgrade to Professional to run more
-              businesses from one account — usage stays pooled across them.
+              Each account runs one business — grow it by adding{" "}
+              <span className="text-bone-dim">locations</span> rather than
+              separate businesses. Head to your dashboard to manage it.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               {ownedSlug && (
                 <Link
-                  href={`/dashboard/${ownedSlug}/usage`}
+                  href={`/dashboard/${ownedSlug}`}
                   className="inline-flex h-11 items-center justify-center rounded-full bg-ember px-6 text-sm font-medium text-[#160b04] transition-colors hover:bg-flare"
                 >
-                  View plans →
+                  Go to your business →
                 </Link>
               )}
               <Link
@@ -206,6 +249,43 @@ export default function CreateBusinessPage() {
                   <h1 className="font-display text-3xl text-bone">
                     Let’s set up your business.
                   </h1>
+
+                  {/* AI autofill from the company's website. */}
+                  <div className="rounded-xl border border-ember/30 bg-ember-soft/30 p-4">
+                    <p className="text-sm text-bone">
+                      Have a website? Let AI fill this in for you.
+                    </p>
+                    <p className="mt-0.5 text-xs text-faint">
+                      We’ll read your site and pre-fill the details — you review
+                      and tweak everything before finishing.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <input
+                        className={`${inputCls} min-w-0 flex-1`}
+                        value={website}
+                        placeholder="yourbusiness.com"
+                        onChange={(e) => setWebsite(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void autofill();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void autofill()}
+                        disabled={enriching || !website.trim()}
+                        className="h-11 shrink-0 rounded-full bg-ember px-5 text-sm font-medium text-[#160b04] transition-colors hover:bg-flare disabled:opacity-60"
+                      >
+                        {enriching ? "Reading…" : "Autofill"}
+                      </button>
+                    </div>
+                    {enrichNote && (
+                      <p className="mt-2 text-xs text-flare">{enrichNote}</p>
+                    )}
+                  </div>
+
                   <Field label="Business name" required>
                     <input
                       autoFocus
@@ -329,6 +409,22 @@ export default function CreateBusinessPage() {
                       onChange={(e) => setHours(e.target.value)}
                     />
                   </Field>
+                  <Field label="Pricing" optional>
+                    <textarea
+                      rows={2}
+                      className={areaCls}
+                      value={pricing}
+                      placeholder="Cleanings from $120, whitening from $250. Call for a quote."
+                      onChange={(e) => setPricing(e.target.value)}
+                    />
+                  </Field>
+                  {faq.length > 0 && (
+                    <p className="text-xs text-faint">
+                      {faq.length} FAQ{faq.length === 1 ? "" : "s"} captured from
+                      your site — you can edit them on the Knowledge page after
+                      setup.
+                    </p>
+                  )}
                 </div>
               )}
 

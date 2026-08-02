@@ -5,10 +5,21 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
+// One business per account: normally this is just a label. It only becomes a
+// dropdown for legacy accounts that still own more than one business.
 export function BusinessSwitcher({ currentSlug }: { currentSlug: string }) {
   const businesses = useQuery(api.businesses.listMine);
   const [open, setOpen] = useState(false);
   const current = businesses?.find((b) => b.slug === currentSlug);
+  const multiple = (businesses?.length ?? 0) > 1;
+
+  if (!multiple) {
+    return (
+      <span className="max-w-[16ch] truncate rounded-lg border border-line px-3 py-1.5 text-sm text-bone">
+        {current?.name ?? "…"}
+      </span>
+    );
+  }
 
   return (
     <div className="relative">
@@ -48,13 +59,6 @@ export function BusinessSwitcher({ currentSlug }: { currentSlug: string }) {
                 </span>
               </Link>
             ))}
-            <Link
-              href="/dashboard"
-              onClick={() => setOpen(false)}
-              className="mt-1 block border-t border-line px-3 py-2 text-sm text-muted transition-colors hover:text-ember"
-            >
-              + New business…
-            </Link>
           </div>
         </>
       )}

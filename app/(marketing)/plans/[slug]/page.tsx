@@ -10,17 +10,22 @@ const PLAN_SEO: Record<string, { title: string; description: string }> = {
   starter: {
     title: "Starter plan",
     description:
-      "Omnivo AI Starter — one AI employee with chat, knowledge, and basic lead capture for a single site. $99/mo, add skills as modules. Free trial.",
+      "Omnivo AI Starter — one AI employee that books and captures leads for a single location. $299/mo. Free trial; Founding Partner pricing for the first 10.",
   },
   professional: {
     title: "Professional plan",
     description:
-      "Omnivo AI Professional — up to 3 projects, higher limits, white-label, and a custom email domain for growing teams. $249/mo, free trial.",
+      "Omnivo AI Professional — adds Review Management + SMS Automation and a second location. $449/mo, free trial.",
+  },
+  premium: {
+    title: "Premium plan",
+    description:
+      "Omnivo AI Premium — the full toolkit: Sales Assistant, Integrations, white-label, custom domain, and 5 locations. $499/mo, free trial.",
   },
   enterprise: {
     title: "Enterprise plan",
     description:
-      "Omnivo AI Enterprise — multi-location businesses, more projects, and usage-based pricing. Talk to us.",
+      "Omnivo AI Enterprise — multi-location businesses and agencies, unlimited usage, and usage-based pricing. Talk to us.",
   },
 };
 

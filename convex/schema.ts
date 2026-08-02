@@ -18,6 +18,7 @@ export const roleValidator = v.union(
 export const tierValidator = v.union(
   v.literal("starter"),
   v.literal("professional"),
+  v.literal("premium"),
   v.literal("enterprise"),
 );
 
@@ -55,6 +56,18 @@ export default defineSchema({
     plan: planValidator,
     projectLimitOverride: v.optional(v.union(v.number(), v.null())),
     locationLimitOverride: v.optional(v.union(v.number(), v.null())),
+    // Extra locations bought beyond the plan's included count (manual until
+    // Stripe). Effective cap = plan's locationLimit + paidLocations.
+    paidLocations: v.optional(v.number()),
+    // "monthly" (cancel anytime) or "annual" (12-mo commitment, billed monthly,
+    // 2 months free, no mid-term cancellation). Defaults to monthly.
+    billingCadence: v.optional(
+      v.union(v.literal("monthly"), v.literal("annual")),
+    ),
+    // For annual accounts: the account can't cancel/downgrade before this.
+    commitmentEndsAt: v.optional(v.number()),
+    // Founding Partner: locked-in 50%-off early-adopter discount (first 10).
+    foundingPartner: v.optional(v.boolean()),
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
   }).index("by_owner", ["ownerUserId"]),
@@ -79,6 +92,23 @@ export default defineSchema({
     // assistant anchors relative dates ("next Tuesday") to this; per-staff
     // availability can still override with its own timezone.
     timezone: v.optional(v.string()),
+    // Per-business SMS controls (the SMS Automation module still gates whether
+    // SMS can send at all + the cap; this tunes *which* events text and *when*).
+    // Absent = sensible defaults (see lib/smsSettings.ts): every event on, 24h
+    // reminder lead, no quiet hours. Quiet hours are local `timezone` hours
+    // [start, end); null = disabled. They suppress proactive texts (reminder,
+    // review, follow-up), never transactional confirmations.
+    smsSettings: v.optional(
+      v.object({
+        confirmationEnabled: v.boolean(),
+        reminderEnabled: v.boolean(),
+        reviewRequestEnabled: v.boolean(),
+        leadFollowupEnabled: v.boolean(),
+        reminderLeadHours: v.number(),
+        quietStart: v.union(v.number(), v.null()),
+        quietEnd: v.union(v.number(), v.null()),
+      }),
+    ),
     // Widget security: origin allow-list + hashed embed key (never stored raw).
     domains: v.array(v.string()),
     embedKeyHash: v.string(),

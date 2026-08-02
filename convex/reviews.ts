@@ -12,6 +12,7 @@ import { randomHex } from "./lib/keys";
 import { entitlementsFor } from "./entitlements";
 import { planForBusiness } from "./lib/accounts";
 import { whiteLabelEnabled } from "./lib/tiers";
+import { resolveSmsSettings, inQuietHours } from "./lib/smsSettings";
 
 // -----------------------------------------------------------------------------
 // Review Management — after a booking completes, ask the customer how it went.
@@ -63,6 +64,8 @@ export const requestForBusiness = internalMutation({
       .take(PER_TENANT_LIMIT);
 
     const entitlements = await entitlementsFor(ctx, businessId);
+    const business = await ctx.db.get(businessId);
+    const settings = resolveSmsSettings(business?.smsSettings);
 
     for (const bk of rows) {
       if (bk.status !== "confirmed") continue;
@@ -71,12 +74,22 @@ export const requestForBusiness = internalMutation({
       if (bk.reviewRequestSentAt) continue; // already asked
       if (!bk.customerEmail && !bk.customerPhone) continue;
 
+      // Prefer SMS when the module + the SMS review toggle are on and we have a
+      // number; else email.
+      const wantSms =
+        entitlements.smsAutomationEnabled &&
+        !!bk.customerPhone &&
+        settings.reviewRequestEnabled;
+      // Quiet hours only suppress SMS — defer to a later tick (don't claim) so
+      // it goes out after quiet hours; email requests aren't time-restricted.
+      if (wantSms && inQuietHours(now, business?.timezone ?? null, settings)) {
+        continue;
+      }
+      const channel = wantSms ? "sms" : "email";
+
       // Claim before scheduling the send so an overlapping tick can't double-ask.
       await ctx.db.patch(bk._id, { reviewRequestSentAt: now });
 
-      // Prefer SMS when the module is on and we have a number; else email.
-      const channel =
-        entitlements.smsAutomationEnabled && bk.customerPhone ? "sms" : "email";
       const token = randomHex(16);
       const requestId = await ctx.db.insert("reviewRequests", {
         businessId,

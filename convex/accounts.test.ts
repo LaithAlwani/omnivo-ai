@@ -14,80 +14,65 @@ const provisionArgs = (name: string, slug: string, prefix: string) => ({
   embedKey: `ek_${prefix}.x`,
 });
 
-// One account per owner: the first project lazily creates it, later projects
-// attach to the same account and count against its plan's project limit.
-test("project limit — a Starter account may create only one project", async () => {
+// One account owns exactly one business — a second is rejected (locations, not
+// projects, are the scalable unit).
+test("one business per account — a second is rejected", async () => {
   const t = convexTest(schema, modules);
   const user = await t.run((ctx) =>
     ctx.db.insert("users", { email: "owner@x.com" }),
   );
   const asUser = t.withIdentity({ subject: `${user}|s` });
 
-  // First project — allowed; creates the (Starter) account.
+  // First business — allowed; creates the (Starter) account.
   await asUser.mutation(internal.businesses.provision, {
     ...provisionArgs("One", "proj-one", "aaaaaa"),
     tier: "starter",
   });
 
-  // Second project on Starter — blocked by the project limit (1).
+  // A second business on the same account — blocked.
   await expect(
     asUser.mutation(internal.businesses.provision, {
       ...provisionArgs("Two", "proj-two", "bbbbbb"),
       tier: "starter",
     }),
-  ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+  ).rejects.toMatchObject({ data: { code: "CONFLICT" } });
 
-  // Exactly one account, one project.
   const acct = await asUser.query(api.accounts.myAccount, {});
   expect(acct?.plan).toBe("starter");
   expect(acct?.projects).toEqual({ used: 1, max: 1 });
 });
 
-// Professional lifts the project ceiling to 3; usage pools across them.
-test("pooled usage — conversations across projects share the account counter", async () => {
+// Usage is pooled on the account counter and read back through the business.
+test("pooled usage — conversations meter the account counter", async () => {
   const t = convexTest(schema, modules);
   const user = await t.run((ctx) =>
     ctx.db.insert("users", { email: "pro@x.com" }),
   );
   const asUser = t.withIdentity({ subject: `${user}|s` });
 
-  // First project creates a Professional account (limit 3).
   const b1 = await asUser.mutation(internal.businesses.provision, {
     ...provisionArgs("Alpha", "alpha", "cccccc"),
     tier: "professional",
   });
-  const b2 = await asUser.mutation(internal.businesses.provision, {
-    ...provisionArgs("Beta", "beta", "dddddd"),
-    tier: "professional",
-  });
 
-  // Two conversations on project 1, one on project 2 → pooled total of 3.
-  await t.mutation(internal.conversations.record, {
-    businessId: b1,
-    conversationKey: "k1",
-  });
-  await t.mutation(internal.conversations.record, {
-    businessId: b1,
-    conversationKey: "k2",
-  });
-  await t.mutation(internal.conversations.record, {
-    businessId: b2,
-    conversationKey: "k3",
-  });
+  // Three conversations → the account's pooled counter reads 3.
+  for (const key of ["k1", "k2", "k3"]) {
+    await t.mutation(internal.conversations.record, {
+      businessId: b1,
+      conversationKey: key,
+    });
+  }
 
   const acct = await asUser.query(api.accounts.myAccount, {});
-  expect(acct?.projects.used).toBe(2);
   expect(acct?.usage.conversations.used).toBe(3);
 
-  // The cap-status query (read from the chat path) sees the same pooled count
-  // through either project.
   const period = new Date().toISOString().slice(0, 7);
   const status = await t.query(internal.tiers.conversationCapStatus, {
-    businessId: b2,
+    businessId: b1,
     period,
   });
   expect(status.used).toBe(3);
-  expect(status.cap).toBe(10000); // professional pool
+  expect(status.cap).toBe(5000); // professional pool
 });
 
 // The migration attaches pre-account data to a freshly created account and

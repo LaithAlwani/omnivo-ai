@@ -79,8 +79,8 @@ export default function LocationsPage() {
             Your plan includes{" "}
             <span className="text-bone-dim">
               {limit} location{limit === 1 ? "" : "s"}
-            </span>{" "}
-            per project.
+            </span>
+            ; add more for $19.99/mo each.
           </>
         )}
       </p>
@@ -262,16 +262,15 @@ export default function LocationsPage() {
           </form>
           {atLimit && (
             <p className="mt-2 text-sm text-muted">
-              You&rsquo;ve reached your plan&rsquo;s location limit.{" "}
+              You&rsquo;ve used all your included locations. Extra locations are
+              $19.99/mo each —{" "}
               <a
-                href="https://omnivoai.ca/#pricing"
-                target="_blank"
-                rel="noopener noreferrer"
+                href={`/dashboard/${b.slug}/usage`}
                 className="text-ember underline hover:text-flare"
               >
-                Upgrade
-              </a>{" "}
-              to add more.
+                add one or upgrade your plan
+              </a>
+              .
             </p>
           )}
         </>

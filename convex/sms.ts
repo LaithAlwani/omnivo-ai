@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalAction } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
@@ -144,6 +144,14 @@ async function notifyBooking(
   });
   if (!entitlements.smsAutomationEnabled) return null;
 
+  // Per-business toggle for this event. (Confirmation/reminder timing is handled
+  // elsewhere; quiet hours don't apply to these transactional/timed texts.)
+  const settings = await ctx.runQuery(internal.messaging.settingsForBusiness, {
+    businessId: info.businessId,
+  });
+  if (kind === "confirmation" && !settings.confirmationEnabled) return null;
+  if (kind === "reminder" && !settings.reminderEnabled) return null;
+
   // Enforce the account's pooled monthly SMS cap (scales with the plan).
   const { over } = await ctx.runQuery(internal.usage.smsCapStatus, {
     businessId: info.businessId,
@@ -244,5 +252,29 @@ export const sendLeadFollowup = internalAction({
       businessId: info.businessId,
     });
     return null;
+  },
+});
+
+/** Send a one-off test SMS to confirm the channel works (manager only). Counts
+ *  against the monthly cap like any other send. */
+export const sendTest = action({
+  args: { slug: v.string(), to: v.string() },
+  returns: v.object({ ok: v.boolean() }),
+  handler: async (ctx, { slug, to }): Promise<{ ok: boolean }> => {
+    const ctxInfo = await ctx.runQuery(internal.messaging.testContext, { slug });
+    if (!ctxInfo.moduleEnabled) {
+      appError("FORBIDDEN", "SMS Automation isn't included on your plan.");
+    }
+    if (ctxInfo.over) {
+      appError("RATE_LIMITED", "You've reached your monthly SMS cap.");
+    }
+    const e164 = toE164(to);
+    if (!e164) appError("INVALID_INPUT", "Enter a valid phone number, e.g. +15551234567.");
+
+    await sendSms(e164, "Test message from your Omnivo AI assistant — SMS is working ✅");
+    await ctx.runMutation(internal.usage.recordSms, {
+      businessId: ctxInfo.businessId,
+    });
+    return { ok: true };
   },
 });

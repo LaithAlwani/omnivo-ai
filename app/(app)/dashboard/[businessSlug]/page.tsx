@@ -116,7 +116,7 @@ export default function OverviewPage() {
           t: "Connect your calendar",
           d: "So it can book without asking you",
           done: stats.calendarConnected,
-          href: `/dashboard/${b.slug}/schedule`,
+          href: `/dashboard/${b.slug}/business/schedule`,
         },
         {
           t: "Put it on your website",
@@ -125,13 +125,14 @@ export default function OverviewPage() {
           href: "#install",
         },
       ];
-  // Once the basics are done, nudge review requests (if that module is off).
+  // Once the basics are done, nudge review requests (if the plan doesn't include
+  // that module yet — it's bundled on Professional and up).
   if (!loading && steps.every((s) => s.done) && !stats.reviewsEnabled) {
     steps.push({
-      t: "Turn on review requests",
-      d: "Ask happy customers automatically",
+      t: "Add review requests",
+      d: "Ask happy customers automatically (Professional+)",
       done: false,
-      href: `/dashboard/${b.slug}/modules`,
+      href: `/dashboard/${b.slug}/usage`,
     });
   }
   const allDone = steps.length > 0 && steps.every((s) => s.done);

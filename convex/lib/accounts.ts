@@ -43,9 +43,13 @@ export function accountProjectLimit(account: Doc<"accounts">): number | null {
     : projectLimit(account.plan);
 }
 
-/** The account's effective location-per-project limit. */
+/** The account's effective location limit: an explicit override wins; otherwise
+ *  the plan's included count plus any extra locations bought ($19.99/mo each). */
 export function accountLocationLimit(account: Doc<"accounts">): number | null {
-  return account.locationLimitOverride !== undefined
-    ? account.locationLimitOverride
-    : locationLimit(account.plan);
+  if (account.locationLimitOverride !== undefined) {
+    return account.locationLimitOverride;
+  }
+  const base = locationLimit(account.plan);
+  if (base === null) return null; // unlimited
+  return base + (account.paidLocations ?? 0);
 }

@@ -8,6 +8,7 @@ import {
   toolsFor,
   DEFAULT_ENTITLEMENTS,
 } from "./modules/registry";
+import { entitlementsForPlan } from "./lib/tiers";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -49,14 +50,34 @@ test("capability assembly — booking tools appear only when a granting module i
   expect(sales.has("qualification")).toBe(true);
 });
 
-// New projects are seeded with Booking + Lead Qualification (widget parity).
-test("provision seeds default entitlements", async () => {
+// New businesses are seeded with exactly their plan's module bundle.
+test("provision seeds entitlements from the plan bundle", async () => {
   const t = convexTest(schema, modules);
-  const { as } = await project(t);
+  const { as } = await project(t); // Professional
   const e = await as.query(api.entitlements.get, { slug: "clip" });
+  // Professional bundles Booking + Lead Capture + Reviews + SMS.
   expect(e.bookingEnabled).toBe(true);
   expect(e.leadQualificationEnabled).toBe(true);
-  expect(e.reviewManagementEnabled).toBe(false);
+  expect(e.reviewManagementEnabled).toBe(true);
+  expect(e.smsAutomationEnabled).toBe(true);
+  // Sales + Integrations are Premium-only.
+  expect(e.salesAssistantEnabled).toBe(false);
+  expect(e.integrationsEnabled).toBe(false);
+});
+
+// The plan → module bundle mapping (pure).
+test("entitlementsForPlan — bundles per tier", () => {
+  const starter = entitlementsForPlan("starter");
+  expect(starter.bookingEnabled).toBe(true);
+  expect(starter.leadQualificationEnabled).toBe(true);
+  expect(starter.smsAutomationEnabled).toBe(true); // SMS now in every tier
+  expect(starter.reviewManagementEnabled).toBe(false);
+  expect(starter.salesAssistantEnabled).toBe(false);
+
+  const premium = entitlementsForPlan("premium");
+  expect(
+    Object.values(premium).every((v) => v === true),
+  ).toBe(true); // all six modules
 });
 
 // Toggling a module off removes the tool at execution time (defense in depth):

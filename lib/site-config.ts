@@ -6,6 +6,22 @@ import type {
   ValueProp,
   Plan,
 } from "@/lib/types";
+import {
+  TIER_LIMITS,
+  planPrice,
+  foundingPrice,
+  annualMonthlyPrice,
+  includedModules,
+  locationLimit,
+  conversationCap,
+  emailCap,
+  smsCap,
+  FOUNDING_SLOTS,
+  FOUNDING_DISCOUNT_PCT,
+  ANNUAL_MONTHS_FREE,
+  ADDITIONAL_LOCATION_CENTS,
+} from "@/convex/lib/tiers";
+import { MODULE_CATALOG } from "@/convex/modules/registry";
 
 // -----------------------------------------------------------------------------
 // Omnivo AI — marketing content (Phase M seed).
@@ -151,20 +167,28 @@ export const embedSnippet = `<script
   data-embed-key="pk_live_7f3a...">
 </script>`;
 
+// -----------------------------------------------------------------------------
+// Pricing — derived from the app's single source of truth (convex/lib/tiers +
+// the module registry) so marketing can't drift from what the product enforces.
+// Model: one AI employee on a bundled tier; modules are included per tier (no
+// à-la-carte). Founding Partner = first 10 accounts at 50% off, locked in.
+// -----------------------------------------------------------------------------
+
+// Curated per-tier feature bullets for the /plans/[slug] detail pages. Prices
+// come from planPrice() so there's exactly one price source.
 export const plans: Plan[] = [
   {
     slug: "starter",
     name: "Starter",
     kind: "platform",
-    price: "$99",
+    price: `$${planPrice("starter")}`,
     cadence: "/mo",
-    blurb: "One AI employee for a single site — add skills as you grow.",
+    blurb: "One AI employee that books, texts, and captures leads for a single location.",
     features: [
-      "1 project · 1 location",
-      "2,500 conversations / mo",
-      "2,500 emails / mo",
-      "Chat, knowledge & basic lead capture",
-      "Add modules à la carte",
+      "Booking + Lead Capture + SMS",
+      "1 location",
+      `${conversationCap("starter")!.toLocaleString()} conversations / mo`,
+      `${smsCap("starter")!.toLocaleString()} SMS / mo`,
     ],
     cta: "Start free trial",
   },
@@ -172,15 +196,31 @@ export const plans: Plan[] = [
     slug: "professional",
     name: "Professional",
     kind: "platform",
-    price: "$249",
+    price: `$${planPrice("professional")}`,
     cadence: "/mo",
-    blurb: "More projects, higher limits, and your brand front and center.",
+    blurb: "Adds SMS + reviews and a second location.",
     features: [
-      "Up to 3 projects · 3 locations each",
-      "10,000 conversations / mo",
-      "10,000 emails / mo",
+      "Everything in Starter",
+      "+ Review Management + SMS Automation",
+      "2 locations",
+      `${conversationCap("professional")!.toLocaleString()} conversations / mo`,
+      `${smsCap("professional")!.toLocaleString()} SMS / mo`,
+    ],
+    cta: "Start free trial",
+  },
+  {
+    slug: "premium",
+    name: "Premium",
+    kind: "platform",
+    price: `$${planPrice("premium")}`,
+    cadence: "/mo",
+    blurb: "The full toolkit — sales, integrations, white-label, 5 locations.",
+    features: [
+      "Everything in Professional",
+      "+ Sales Assistant + Integrations",
       "White-label + custom email domain",
-      "Priority support",
+      "5 locations",
+      `${conversationCap("premium")!.toLocaleString()} conversations / mo`,
     ],
     featured: true,
     cta: "Start free trial",
@@ -193,52 +233,47 @@ export const plans: Plan[] = [
     cadence: "",
     blurb: "For multi-location businesses and agencies reselling the platform.",
     features: [
-      "Everything in Professional",
-      "More projects & locations",
+      "Everything in Premium",
+      "Unlimited locations & usage",
       "Usage-based pricing",
       "Priority support & SLA",
-      "All modules available",
     ],
     cta: "Talk to us",
   },
 ];
 
-// Add-on modules — the skills the one AI employee can gain. Shown as a grid
-// beneath the base plans. `price` is USD/mo, stacked on any base plan.
-export const addOnModules = [
-  {
-    name: "Booking Assistant",
-    price: 49,
-    blurb: "Live availability + booking, Google Calendar, confirmations.",
-  },
-  {
-    name: "Lead Capture & Qualification",
-    price: 15,
-    blurb: "Qualifying questions, intent detection, owner alerts.",
-  },
-  {
-    name: "SMS Automation",
-    price: 49,
-    blurb: "Reminders, follow-ups, and review texts — includes an SMS allowance.",
-  },
-  {
-    name: "Review Management",
-    price: 29,
-    blurb: "Ask happy customers for reviews; catch unhappy ones privately.",
-  },
-  {
-    name: "Sales Assistant",
-    price: 49,
-    blurb: "Qualify, book, follow up, and flag hot leads — end to end.",
-  },
-  {
-    name: "Integrations",
-    price: 49,
-    blurb: "Connect your own booking system or CRM (sync out + lookup in).",
-  },
-] as const;
+// The three paid tiers, fully derived — powers the comparison matrix + toggles.
+const PAID_TIERS = ["starter", "professional", "premium"] as const;
 
-// Metered overage once you pass a plan's monthly allowance.
+export const pricingTiers = PAID_TIERS.map((key) => ({
+  key,
+  name: key.charAt(0).toUpperCase() + key.slice(1),
+  monthly: planPrice(key)!,
+  founding: foundingPrice(key)!,
+  annualMonthly: annualMonthlyPrice(key)!,
+  locations: locationLimit(key)!,
+  conversations: conversationCap(key)!,
+  emails: emailCap(key)!,
+  sms: smsCap(key)!,
+  whiteLabel: TIER_LIMITS[key].whiteLabel,
+  modules: new Set(includedModules(key)),
+  featured: key === "premium",
+}));
+
+// Matrix rows: one per module, from the registry (name is the single source).
+export const pricingModules = MODULE_CATALOG.map((m) => ({
+  key: m.key,
+  name: m.name,
+}));
+
+export const foundingInfo = {
+  slots: FOUNDING_SLOTS,
+  discountPct: FOUNDING_DISCOUNT_PCT,
+};
+export const annualInfo = { monthsFree: ANNUAL_MONTHS_FREE };
+export const additionalLocationPrice = ADDITIONAL_LOCATION_CENTS / 100;
+
+// Metered overage once you pass a plan's monthly allowance (founders too).
 export const overageRates = [
   { label: "Conversations", rate: "$10 / 1,000" },
   { label: "Emails", rate: "$5 / 1,000" },

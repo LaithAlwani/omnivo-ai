@@ -12,10 +12,10 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireMember } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { whiteLabelEnabled } from "./lib/tiers";
-import { planForBusiness, accountProjectLimit } from "./lib/accounts";
+import { planForBusiness } from "./lib/accounts";
 import { getOrCreateAccount, projectCount } from "./accounts";
 import { ensureDefaultLocation } from "./locations";
-import { ensureFeatures } from "./entitlements";
+import { syncEntitlementsToPlan } from "./entitlements";
 import { generateEmbedKey } from "./lib/keys";
 import { tierValidator } from "./schema";
 
@@ -44,6 +44,10 @@ const profileValidator = v.optional(
           description: v.optional(v.string()),
         }),
       ),
+    ),
+    pricing: v.optional(v.string()),
+    faq: v.optional(
+      v.array(v.object({ q: v.string(), a: v.string() })),
     ),
   }),
 );
@@ -115,17 +119,17 @@ export const provision = internalMutation({
       .unique();
     if (existing) appError("CONFLICT", `The slug "${args.slug}" is already taken.`);
 
-    // Resolve (or lazily create) the caller's account, then enforce its project
-    // allowance before provisioning another project against it.
+    // Resolve (or lazily create) the caller's account. An account owns exactly
+    // one business — reject a second (locations, not projects, are the unit).
     const accountId = await getOrCreateAccount(ctx, userId, args.tier);
     const account = await ctx.db.get(accountId);
-    const limit = account ? accountProjectLimit(account) : 1;
-    if (limit !== null && (await projectCount(ctx, accountId)) >= limit) {
+    if ((await projectCount(ctx, accountId)) >= 1) {
       appError(
-        "FORBIDDEN",
-        `Your plan includes ${limit} project${limit === 1 ? "" : "s"}. Upgrade to add more.`,
+        "CONFLICT",
+        "Your account already has a business. Add locations to grow it.",
       );
     }
+    const plan = account?.plan ?? args.tier;
 
     const p = args.profile;
     const businessId = await ctx.db.insert("businesses", {
@@ -161,13 +165,9 @@ export const provision = internalMutation({
     // Every project starts with one location; the default calendar lives there.
     const locationId = await ensureDefaultLocation(ctx, businessId);
 
-    // Seed module entitlements so the assistant can book + capture leads out of
-    // the box (matching the pre-modular default). Managers can toggle later.
-    await ensureFeatures(ctx, businessId, {
-      bookingEnabled: true,
-      leadQualificationEnabled: true,
-      smsAutomationEnabled: true,
-    });
+    // Seed module entitlements from the plan's bundle (Starter = Booking + Lead
+    // Capture; higher tiers add more). Re-synced whenever the plan changes.
+    await syncEntitlementsToPlan(ctx, businessId, plan);
 
     // Default shared calendar: a login-less resource named "Main" so booking
     // works before any employees are added. Renamed from the business name so
@@ -192,15 +192,19 @@ export const provision = internalMutation({
       .filter((s) => s.name.length > 0);
     const about = p?.about?.trim() ?? "";
     const hours = p?.hours?.trim() ?? "";
-    if (about || hours || services.length > 0) {
+    const pricing = p?.pricing?.trim() ?? "";
+    const faq = (p?.faq ?? [])
+      .map((f) => ({ q: f.q.trim(), a: f.a.trim() }))
+      .filter((f) => f.q && f.a);
+    if (about || hours || pricing || services.length > 0 || faq.length > 0) {
       await ctx.db.insert("knowledge", {
         businessId,
         about,
         services,
-        pricing: "",
+        pricing,
         hours,
         locations: [],
-        faq: [],
+        faq,
         policies: "",
       });
     }

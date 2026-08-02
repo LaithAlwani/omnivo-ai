@@ -321,6 +321,7 @@ export const notificationContext = internalQuery({
       tier: v.union(
         v.literal("starter"),
         v.literal("professional"),
+        v.literal("premium"),
         v.literal("enterprise"),
       ),
       timezone: v.union(v.string(), v.null()),

@@ -9,6 +9,7 @@ import { requireMemberBySlug } from "./lib/authz";
 import { entitlementsFor } from "./entitlements";
 import { planForBusiness } from "./lib/accounts";
 import { whiteLabelEnabled } from "./lib/tiers";
+import { resolveSmsSettings, inQuietHours } from "./lib/smsSettings";
 
 // -----------------------------------------------------------------------------
 // Sales Assistant — self-contained lead conversion. Beyond the shared capture +
@@ -49,6 +50,8 @@ export const followupForBusiness = internalMutation({
   handler: async (ctx, { businessId }) => {
     const now = Date.now();
     const entitlements = await entitlementsFor(ctx, businessId);
+    const business = await ctx.db.get(businessId);
+    const settings = resolveSmsSettings(business?.smsSettings);
 
     // Open pipeline = new + contacted (won/lost/qualified are settled).
     const open = [
@@ -73,6 +76,17 @@ export const followupForBusiness = internalMutation({
         continue;
       if (!lead.email && !lead.phone) continue;
 
+      // SMS follow-up needs the module + the SMS follow-up toggle + a number;
+      // else fall back to email. Quiet hours only suppress SMS — defer (don't
+      // claim) so it goes out later; email follow-ups aren't time-restricted.
+      const useSms =
+        entitlements.smsAutomationEnabled &&
+        !!lead.phone &&
+        settings.leadFollowupEnabled;
+      if (useSms && inQuietHours(now, business?.timezone ?? null, settings)) {
+        continue;
+      }
+
       // Claim before scheduling so an overlapping tick can't double-send.
       await ctx.db.patch(lead._id, {
         lastFollowupAt: now,
@@ -81,7 +95,6 @@ export const followupForBusiness = internalMutation({
         updatedAt: now,
       });
 
-      const useSms = entitlements.smsAutomationEnabled && !!lead.phone;
       if (useSms) {
         await ctx.scheduler.runAfter(0, internal.sms.sendLeadFollowup, {
           leadId: lead._id,

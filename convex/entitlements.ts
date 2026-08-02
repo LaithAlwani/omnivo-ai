@@ -8,6 +8,7 @@ import {
   type Entitlements,
   DEFAULT_ENTITLEMENTS,
 } from "./modules/registry";
+import { entitlementsForPlan, type Plan } from "./lib/tiers";
 
 // -----------------------------------------------------------------------------
 // Entitlements — per-project module toggles. The single AI Employee gains skills
@@ -60,6 +61,26 @@ export async function ensureFeatures(
     ...DEFAULT_ENTITLEMENTS,
     ...overrides,
   });
+}
+
+/** Overwrite a project's module entitlements to exactly match its plan's bundle.
+ *  Called on provision and whenever the account's plan changes, so enabling a
+ *  higher tier turns on its modules and downgrading turns the rest off. */
+export async function syncEntitlementsToPlan(
+  ctx: MutationCtx,
+  businessId: Id<"businesses">,
+  plan: Plan,
+): Promise<void> {
+  const entitlements = entitlementsForPlan(plan);
+  const existing = await ctx.db
+    .query("tenantFeatures")
+    .withIndex("by_business", (q) => q.eq("businessId", businessId))
+    .unique();
+  if (existing) {
+    await ctx.db.patch(existing._id, entitlements);
+  } else {
+    await ctx.db.insert("tenantFeatures", { businessId, ...entitlements });
+  }
 }
 
 /** Internal: entitlements for the chat/workflow path. */
