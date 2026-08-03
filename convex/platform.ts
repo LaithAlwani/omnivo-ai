@@ -5,6 +5,7 @@ import type { Id } from "./_generated/dataModel";
 import { requirePlatformAdmin } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { planForBusiness } from "./lib/accounts";
+import { creditStatus, usagePeriod } from "./lib/tiers";
 
 // -----------------------------------------------------------------------------
 // Platform plane — cross-tenant, operators only. Every read starts with
@@ -89,6 +90,71 @@ export const listBusinesses = query({
         createdAt: b._creationTime,
       })),
     );
+  },
+});
+
+/** AI cost & margin per business for a month — the COGS view. For each tenant:
+ *  conversations, billable tokens, the credit revenue we've attributed to AI
+ *  (included credits consumed + accrued overage), our estimated Anthropic spend,
+ *  and the margin between them. Spot unprofitable clients + validate the $/token
+ *  rate. Cross-tenant read — operators only. */
+export const costMargin = query({
+  args: { period: v.optional(v.string()) },
+  handler: async (ctx, { period }) => {
+    await requirePlatformAdmin(ctx);
+    const p = period ?? usagePeriod(Date.now());
+    const businesses = await ctx.db.query("businesses").collect();
+
+    const rows = await Promise.all(
+      businesses.map(async (b) => {
+        const plan = await planForBusiness(ctx, b._id);
+        const counter = b.accountId
+          ? await ctx.db
+              .query("usageCounters")
+              .withIndex("by_account_period", (q) =>
+                q.eq("accountId", b.accountId!).eq("period", p),
+              )
+              .unique()
+          : null;
+
+        const billableTokens =
+          (counter?.aiInputTokens ?? 0) + (counter?.aiOutputTokens ?? 0);
+        const credit = creditStatus(plan, billableTokens);
+        // Revenue attributed to AI: the included credits consumed (a slice of
+        // their subscription) plus any overage that accrues on top.
+        const revenueCents = credit.usedCents + credit.overageCents;
+        const ourCostCents = Math.round(counter?.aiCostCents ?? 0);
+
+        return {
+          _id: b._id,
+          name: b.name,
+          slug: b.slug,
+          tier: plan,
+          conversations: counter?.conversations ?? 0,
+          billableTokens,
+          cacheReadTokens: counter?.aiCacheReadTokens ?? 0,
+          revenueCents,
+          overageCents: credit.overageCents,
+          ourCostCents,
+          marginCents: revenueCents - ourCostCents,
+        };
+      }),
+    );
+
+    // Busiest (by our spend) first; idle tenants sink to the bottom.
+    rows.sort((a, b) => b.ourCostCents - a.ourCostCents);
+
+    const totals = rows.reduce(
+      (acc, r) => ({
+        billableTokens: acc.billableTokens + r.billableTokens,
+        revenueCents: acc.revenueCents + r.revenueCents,
+        ourCostCents: acc.ourCostCents + r.ourCostCents,
+        marginCents: acc.marginCents + r.marginCents,
+      }),
+      { billableTokens: 0, revenueCents: 0, ourCostCents: 0, marginCents: 0 },
+    );
+
+    return { period: p, rows, totals };
   },
 });
 

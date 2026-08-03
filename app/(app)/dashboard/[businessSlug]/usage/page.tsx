@@ -7,6 +7,7 @@ import { errorText } from "@/lib/errors";
 import { useBusiness } from "@/components/dashboard/business-context";
 import { UsageMeter } from "@/components/dashboard/usage-meter";
 import { plans } from "@/lib/site-config";
+import { creditsFromCents } from "@/convex/lib/tiers";
 
 const SELECTABLE_PLANS = plans.filter((p) => p.slug !== "enterprise");
 
@@ -80,17 +81,75 @@ export default function UsagePage() {
         )}
       </div>
 
-      {/* Usage this period */}
+      {/* AI credits this period */}
+      {(() => {
+        const c = data.aiCredits;
+        // Credits are the customer-facing unit ($1 = 100 credits → 1 credit = 1¢).
+        const credits = (cents: number) => creditsFromCents(cents).toLocaleString();
+        const unlimited = c.grantedCents === null;
+        const pct = unlimited
+          ? 0
+          : Math.min(
+              100,
+              Math.round((c.usedCents / (c.grantedCents || 1)) * 100),
+            );
+        return (
+          <div className="mt-4 rounded-xl border border-line bg-surface/40 p-6">
+            <div className="flex items-baseline justify-between">
+              <div className="font-mono text-xs uppercase tracking-wider text-faint">
+                AI credits · {data.period}
+              </div>
+              <div className="text-sm text-muted">
+                {unlimited ? (
+                  <span className="text-bone">Custom</span>
+                ) : (
+                  <>
+                    <span className="text-bone">{credits(c.usedCents)}</span> of{" "}
+                    {credits(c.grantedCents!)} credits used
+                  </>
+                )}
+              </div>
+            </div>
+
+            {!unlimited && (
+              <>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-line">
+                  <div
+                    className="h-full rounded-full bg-ember transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="mt-2 text-right text-xs text-bone-dim">
+                  {credits(c.remainingCents!)} credits left
+                </div>
+              </>
+            )}
+
+            <p className="mt-4 text-xs text-faint">
+              Your AI assistant draws down these credits as it answers customers.
+              Pooled across your account and reset at the start of each month.{" "}
+              {c.conversations.toLocaleString()} conversation
+              {c.conversations === 1 ? "" : "s"} this period.
+            </p>
+
+            {c.overageCents > 0 && (
+              <p className="mt-3 rounded-lg border border-ember/40 bg-ember-soft/40 px-3 py-2 text-xs text-bone-dim">
+                You&rsquo;ve used all your included AI credits. Extra usage is
+                billed as overage — about{" "}
+                <span className="text-bone">{credits(c.overageCents)} credits</span>{" "}
+                over so far this period. Add a credit pack to keep going for less.
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Email & SMS usage this period */}
       <div className="mt-4 rounded-xl border border-line bg-surface/40 p-6">
         <div className="font-mono text-xs uppercase tracking-wider text-faint">
-          Usage · {data.period}
+          Emails &amp; SMS · {data.period}
         </div>
         <div className="mt-4 space-y-5">
-          <UsageMeter
-            label="Conversations"
-            used={data.conversations.used}
-            cap={data.conversations.cap}
-          />
           <UsageMeter
             label="Emails"
             used={data.emails.used}
@@ -99,14 +158,11 @@ export default function UsagePage() {
           <UsageMeter label="SMS" used={data.sms.used} cap={data.sms.cap} />
         </div>
         <p className="mt-5 text-xs text-faint">
-          Conversation, email, and SMS usage is pooled across your account and
-          resets at the start of each month.
+          Email and SMS usage is pooled across your account and resets at the
+          start of each month.
         </p>
         {(() => {
-          const overCents =
-            data.conversations.overageCents +
-            data.emails.overageCents +
-            data.sms.overageCents;
+          const overCents = data.emails.overageCents + data.sms.overageCents;
           if (overCents <= 0) return null;
           return (
             <p className="mt-3 rounded-lg border border-ember/40 bg-ember-soft/40 px-3 py-2 text-xs text-bone-dim">

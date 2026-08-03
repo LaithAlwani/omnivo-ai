@@ -65,14 +65,17 @@ test("pooled usage — conversations meter the account counter", async () => {
 
   const acct = await asUser.query(api.accounts.myAccount, {});
   expect(acct?.usage.conversations.used).toBe(3);
+  // Conversations are now an uncapped activity metric (AI usage is governed by
+  // the credit balance), so there is no conversation cap.
+  expect(acct?.usage.conversations.cap).toBe(null);
 
+  // The runaway safety valve stays open under normal usage.
   const period = new Date().toISOString().slice(0, 7);
-  const status = await t.query(internal.tiers.conversationCapStatus, {
+  const { blocked } = await t.query(internal.tiers.creditSafetyStatus, {
     businessId: b1,
     period,
   });
-  expect(status.used).toBe(3);
-  expect(status.cap).toBe(5000); // professional pool
+  expect(blocked).toBe(false);
 });
 
 // The migration attaches pre-account data to a freshly created account and

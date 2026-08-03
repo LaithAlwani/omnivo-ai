@@ -18,6 +18,7 @@ import {
   usagePeriod,
   overageUnits,
   overageCostCents,
+  creditStatus,
 } from "./lib/tiers";
 
 // -----------------------------------------------------------------------------
@@ -79,11 +80,13 @@ export const myAccount = query({
     const convUsed = counter?.conversations ?? 0;
     const emailUsed = counter?.email ?? 0;
     const smsUsed = counter?.sms ?? 0;
+    // AI conversations → token-based credit balance (no hard cap; overage accrues
+    // past the included allowance). Emails/SMS keep their capped block overage.
+    const billableTokens =
+      (counter?.aiInputTokens ?? 0) + (counter?.aiOutputTokens ?? 0);
+    const aiCredits = creditStatus(account.plan, billableTokens);
     const overageCents =
-      overageCostCents(
-        "conversations",
-        overageUnits(convUsed, limits.conversationsPerMonth),
-      ) +
+      aiCredits.overageCents +
       overageCostCents("emails", overageUnits(emailUsed, limits.emailsPerMonth)) +
       overageCostCents("sms", overageUnits(smsUsed, limits.smsPerMonth));
 
@@ -113,6 +116,7 @@ export const myAccount = query({
           cadence,
         }),
         commitmentEndsAt: account.commitmentEndsAt ?? null,
+        aiCredits,
       },
       locations: {
         included: includedLocations,
@@ -120,6 +124,8 @@ export const myAccount = query({
         cap: accountLocationLimit(account),
       },
       usage: {
+        // Retained as an activity metric; the credit balance (billing.aiCredits)
+        // is now what governs AI usage.
         conversations: { used: convUsed, cap: limits.conversationsPerMonth },
         emails: { used: emailUsed, cap: limits.emailsPerMonth },
         sms: { used: smsUsed, cap: limits.smsPerMonth },

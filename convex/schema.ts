@@ -371,6 +371,13 @@ export default defineSchema({
     conversationKey: v.string(), // opaque session id minted by the widget
     messageCount: v.number(),
     lastMessageAt: v.number(),
+    // Token accounting (accumulated across the conversation's turns). Billable
+    // credits are input+output; cache reads are our-cost-only. `costCents` is our
+    // estimated Anthropic cost (filled once model pricing is wired).
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    cacheReadTokens: v.optional(v.number()),
+    costCents: v.optional(v.number()),
   })
     .index("by_business", ["businessId"])
     .index("by_business_key", ["businessId", "conversationKey"]),
@@ -387,6 +394,12 @@ export default defineSchema({
     conversations: v.number(),
     sms: v.optional(v.number()),
     email: v.optional(v.number()),
+    // AI token usage this period — the driver for AI credits (billable =
+    // input+output) and our cost/margin (`aiCostCents`, incl. cheap cache reads).
+    aiInputTokens: v.optional(v.number()),
+    aiOutputTokens: v.optional(v.number()),
+    aiCacheReadTokens: v.optional(v.number()),
+    aiCostCents: v.optional(v.number()),
   })
     .index("by_account_period", ["accountId", "period"])
     .index("by_business_period", ["businessId", "period"]),

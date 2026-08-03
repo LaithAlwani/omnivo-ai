@@ -7,19 +7,24 @@ import type {
   Plan,
 } from "@/lib/types";
 import {
+  type Tier,
   TIER_LIMITS,
   planPrice,
   foundingPrice,
   annualMonthlyPrice,
   includedModules,
   locationLimit,
-  conversationCap,
+  creditGrantCents,
+  creditsFromCents,
   emailCap,
   smsCap,
   FOUNDING_SLOTS,
   FOUNDING_DISCOUNT_PCT,
   ANNUAL_MONTHS_FREE,
   ADDITIONAL_LOCATION_CENTS,
+  OVERAGE_RATES,
+  BUNDLE_RATES,
+  CREDIT_PACK_CENTS,
 } from "@/convex/lib/tiers";
 import { MODULE_CATALOG } from "@/convex/modules/registry";
 
@@ -174,6 +179,13 @@ export const embedSnippet = `<script
 // à-la-carte). Founding Partner = first 10 accounts at 50% off, locked in.
 // -----------------------------------------------------------------------------
 
+// AI-credit copy, derived from the single source. Credits are a whole-number
+// balance the AI draws down as it works — never shown in dollars. e.g.
+// "1,500 AI credits / mo".
+function creditBullet(key: Tier): string {
+  return `${creditsFromCents(creditGrantCents(key)!).toLocaleString()} AI credits / mo`;
+}
+
 // Curated per-tier feature bullets for the /plans/[slug] detail pages. Prices
 // come from planPrice() so there's exactly one price source.
 export const plans: Plan[] = [
@@ -187,7 +199,7 @@ export const plans: Plan[] = [
     features: [
       "Booking + Lead Capture + SMS",
       "1 location",
-      `${conversationCap("starter")!.toLocaleString()} conversations / mo`,
+      creditBullet("starter"),
       `${smsCap("starter")!.toLocaleString()} SMS / mo`,
     ],
     cta: "Start free trial",
@@ -203,7 +215,7 @@ export const plans: Plan[] = [
       "Everything in Starter",
       "+ Review Management + SMS Automation",
       "2 locations",
-      `${conversationCap("professional")!.toLocaleString()} conversations / mo`,
+      creditBullet("professional"),
       `${smsCap("professional")!.toLocaleString()} SMS / mo`,
     ],
     cta: "Start free trial",
@@ -220,7 +232,7 @@ export const plans: Plan[] = [
       "+ Sales Assistant + Integrations",
       "White-label + custom email domain",
       "5 locations",
-      `${conversationCap("premium")!.toLocaleString()} conversations / mo`,
+      creditBullet("premium"),
     ],
     featured: true,
     cta: "Start free trial",
@@ -252,7 +264,8 @@ export const pricingTiers = PAID_TIERS.map((key) => ({
   founding: foundingPrice(key)!,
   annualMonthly: annualMonthlyPrice(key)!,
   locations: locationLimit(key)!,
-  conversations: conversationCap(key)!,
+  // AI credits — a monthly credit balance the AI draws down as it works.
+  credits: creditsFromCents(creditGrantCents(key)!),
   emails: emailCap(key)!,
   sms: smsCap(key)!,
   whiteLabel: TIER_LIMITS[key].whiteLabel,
@@ -273,11 +286,43 @@ export const foundingInfo = {
 export const annualInfo = { monthsFree: ANNUAL_MONTHS_FREE };
 export const additionalLocationPrice = ADDITIONAL_LOCATION_CENTS / 100;
 
-// Metered overage once you pass a plan's monthly allowance (founders too).
+const money = (cents: number) =>
+  cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
+
+// Auto-charged overage once you pass a monthly allowance — per unit, and priced
+// so a bundle is always the smarter buy (founders included).
 export const overageRates = [
-  { label: "Conversations", rate: "$10 / 1,000" },
-  { label: "Emails", rate: "$5 / 1,000" },
-  { label: "SMS", rate: "$10 / 100" },
+  {
+    label: "Extra emails",
+    price: money(OVERAGE_RATES.emails.cents),
+    unit: "per email",
+  },
+  {
+    label: "Extra SMS",
+    price: money(OVERAGE_RATES.sms.cents),
+    unit: "per SMS",
+  },
+] as const;
+
+// Prepaid bundles you can buy anytime — cheaper than running into overage
+// (goes live with billing). The AI-credit pack is shown as a credit quantity;
+// email/SMS add-ons keep their dollar pricing.
+export const bundles = [
+  {
+    label: "AI credits",
+    amount: money(CREDIT_PACK_CENTS),
+    unit: `per ${creditsFromCents(CREDIT_PACK_CENTS).toLocaleString()} credits`,
+  },
+  {
+    label: "Emails",
+    amount: money(BUNDLE_RATES.emails.cents),
+    unit: `per ${BUNDLE_RATES.emails.units.toLocaleString()}`,
+  },
+  {
+    label: "SMS",
+    amount: money(BUNDLE_RATES.sms.cents),
+    unit: `per ${BUNDLE_RATES.sms.units}`,
+  },
 ] as const;
 
 export const seo = {

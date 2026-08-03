@@ -31,6 +31,6 @@ export const faqs: Faq[] = [
   },
   {
     q: "How much does it cost?",
-    a: "You hire one AI employee on a bundled tier. Starter is $299/mo (Booking + Lead Capture + SMS, 1 location, 2,500 conversations & emails, 100 SMS). Professional is $449/mo (adds Review Management + higher limits, 2 locations, 5,000 conversations, 500 SMS). Premium is $499/mo (adds Sales Assistant + Integrations + white-label + custom domain, 5 locations, 15,000 conversations, 1,500 SMS). Extra locations are $19.99/mo each, and Enterprise is custom. The first 10 customers get Founding Partner Pricing — 50% off, locked in. Every plan starts with a free trial.",
+    a: "You hire one AI employee on a bundled tier. Starter is $299/mo (Booking + Lead Capture + SMS, 1 location, $15 AI credits, 2,500 emails, 100 SMS). Professional is $449/mo (adds Review Management + higher limits, 2 locations, $30 AI credits, 500 SMS). Premium is $499/mo (adds Sales Assistant + Integrations + white-label + custom domain, 5 locations, $50 AI credits, 15,000 emails, 1,500 SMS). AI credits are a monthly balance spent by the tokens your assistant uses to chat — heavier months cost more, and you can top up with a $10 = 1M-token pack or let usage run at $3 per 100K tokens over. Extra locations are $19.99/mo each, and Enterprise is custom. The first 10 customers get Founding Partner Pricing — 50% off, locked in. Every plan starts with a free trial.",
   },
 ];

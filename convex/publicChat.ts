@@ -46,17 +46,18 @@ export const chat = action({
     // Per-tenant guard on the expensive AI path before we touch the model.
     await enforceLimit(ctx, "widgetChat", businessId);
 
-    // Plan enforcement: a new conversation (first user turn) is refused once the
-    // tenant is over its monthly cap. Existing conversations continue. We degrade
-    // to a polite message rather than an error so the widget stays graceful.
+    // No hard credit cap — usage past the plan's included AI credits keeps
+    // working and accrues overage (billed once Stripe lands). We only refuse in
+    // a runaway case (usage far beyond the allowance), as cheap insurance until
+    // billing exists. Degrade to a polite message so the widget stays graceful.
     const isNewConversation =
       args.messages.filter((m) => m.role === "user").length <= 1;
     if (isNewConversation) {
-      const { over } = await ctx.runQuery(
-        internal.tiers.conversationCapStatus,
+      const { blocked } = await ctx.runQuery(
+        internal.tiers.creditSafetyStatus,
         { businessId, period: usagePeriod(Date.now()) },
       );
-      if (over) {
+      if (blocked) {
         return {
           reply:
             "Thanks for reaching out! We're unable to chat right now — please contact us by email or phone and we'll get back to you shortly.",
@@ -117,6 +118,20 @@ export const chat = action({
       content: m.content,
     }));
 
+    // Token accounting — summed across every model call in this turn (billable
+    // credits = input+output; cache tokens are our-cost-only, for margin).
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cacheReadTokens = 0;
+    let cacheWriteTokens = 0;
+    const addUsage = (u: Anthropic.Usage | undefined) => {
+      if (!u) return;
+      inputTokens += u.input_tokens ?? 0;
+      outputTokens += u.output_tokens ?? 0;
+      cacheReadTokens += u.cache_read_input_tokens ?? 0;
+      cacheWriteTokens += u.cache_creation_input_tokens ?? 0;
+    };
+
     let response = await client.messages.create({
       model,
       max_tokens: 1024,
@@ -124,6 +139,7 @@ export const chat = action({
       tools,
       messages,
     });
+    addUsage(response.usage);
 
     // Tool loop — bounded so a misbehaving model can't spin forever.
     let guard = 0;
@@ -154,7 +170,20 @@ export const chat = action({
         tools,
         messages,
       });
+      addUsage(response.usage);
     }
+
+    // Meter this turn's tokens onto the conversation + the account (drives AI
+    // credits + our cost/margin). Fire-and-forget so it never blocks the reply.
+    await ctx.scheduler.runAfter(0, internal.conversations.recordUsage, {
+      businessId,
+      conversationKey: args.conversationId,
+      model,
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+    });
 
     const text = response.content
       .map((block) => (block.type === "text" ? block.text : ""))

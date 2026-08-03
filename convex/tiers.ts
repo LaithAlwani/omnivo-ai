@@ -1,12 +1,15 @@
 import { v } from "convex/values";
 import { internalQuery, query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { requireMemberBySlug } from "./lib/authz";
 import {
-  conversationCap,
   tierLimits,
   usagePeriod,
   overageUnits,
   overageCostCents,
+  creditStatus,
+  creditTokens,
   type MeteredUnit,
 } from "./lib/tiers";
 import { planForBusiness } from "./lib/accounts";
@@ -23,42 +26,45 @@ const meter = (used: number, cap: number | null, unit: MeteredUnit) => {
 };
 
 // -----------------------------------------------------------------------------
-// Server-side plan enforcement helpers. The capability rules themselves live in
-// lib/tiers.ts; this exposes the pieces that need database reads. Usage is
-// POOLED at the account level, so counters are read by accountId.
+// Server-side plan helpers that need DB reads. Usage is pooled at the account
+// level, so counters are read by accountId. AI conversations are governed by the
+// token-based credit economy (no hard cap); emails/SMS still have monthly caps.
 // -----------------------------------------------------------------------------
 
-/** Where an account stands against its monthly conversation cap. `period` is
- *  passed in ("YYYY-MM") so this stays a pure, wall-clock-free query. */
-export const conversationCapStatus = internalQuery({
+/** Billable AI tokens (input+output) an account has used this period. */
+async function billableTokensThisPeriod(
+  ctx: QueryCtx,
+  accountId: Id<"accounts"> | undefined,
+  period: string,
+): Promise<number> {
+  if (!accountId) return 0;
+  const counter = await ctx.db
+    .query("usageCounters")
+    .withIndex("by_account_period", (q) =>
+      q.eq("accountId", accountId).eq("period", period),
+    )
+    .unique();
+  return (counter?.aiInputTokens ?? 0) + (counter?.aiOutputTokens ?? 0);
+}
+
+/** Runaway safety valve for the widget: only "blocked" when usage is far beyond
+ *  the plan's included credit allowance (10×). Normal over-allowance usage flows
+ *  and accrues overage — there is no hard credit cap. */
+export const creditSafetyStatus = internalQuery({
   args: { businessId: v.id("businesses"), period: v.string() },
-  returns: v.object({
-    over: v.boolean(),
-    used: v.number(),
-    cap: v.union(v.number(), v.null()),
-  }),
+  returns: v.object({ blocked: v.boolean() }),
   handler: async (ctx, { businessId, period }) => {
     const business = await ctx.db.get(businessId);
     const plan = await planForBusiness(ctx, businessId);
-    const cap = conversationCap(plan);
-
-    let used = 0;
-    if (business?.accountId) {
-      const counter = await ctx.db
-        .query("usageCounters")
-        .withIndex("by_account_period", (q) =>
-          q.eq("accountId", business.accountId!).eq("period", period),
-        )
-        .unique();
-      used = counter?.conversations ?? 0;
-    }
-
-    return { over: cap !== null && used >= cap, used, cap };
+    const allowance = creditTokens(plan);
+    if (allowance === null) return { blocked: false }; // enterprise/unlimited
+    const used = await billableTokensThisPeriod(ctx, business?.accountId, period);
+    return { blocked: used > allowance * 10 };
   },
 });
 
-/** The caller's plan + what's included + this month's pooled usage against
- *  limits. Powers the dashboard Plan & usage page. */
+/** The caller's plan + what's included + this month's pooled usage. Powers the
+ *  dashboard Plan & usage page. AI conversations report as a credit balance. */
 export const planUsage = query({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {
@@ -76,14 +82,17 @@ export const planUsage = query({
           .unique()
       : null;
 
+    const billableTokens =
+      (counter?.aiInputTokens ?? 0) + (counter?.aiOutputTokens ?? 0);
+
     return {
       tier: plan,
       period,
-      conversations: meter(
-        counter?.conversations ?? 0,
-        limits.conversationsPerMonth,
-        "conversations",
-      ),
+      // AI conversations → a token-based credit balance.
+      aiCredits: {
+        ...creditStatus(plan, billableTokens),
+        conversations: counter?.conversations ?? 0,
+      },
       emails: meter(counter?.email ?? 0, limits.emailsPerMonth, "emails"),
       sms: meter(counter?.sms ?? 0, limits.smsPerMonth, "sms"),
       features: {

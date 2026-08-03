@@ -25,7 +25,8 @@ export interface TierLimits {
   priceMonthly: number | null;
   /** Modules bundled into this tier (all others locked). */
   includedModules: ModuleKey[];
-  /** Pooled monthly conversation allowance for the business. */
+  /** Legacy conversation cap — retired in favour of AI credits (token-based).
+   *  Now always null (no conversation cap); kept so existing readers compile. */
   conversationsPerMonth: number | null;
   /** Pooled monthly email allowance. */
   emailsPerMonth: number | null;
@@ -50,7 +51,7 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
   starter: {
     priceMonthly: 299,
     includedModules: ["booking", "leadQualification", "smsAutomation"],
-    conversationsPerMonth: 2500,
+    conversationsPerMonth: null,
     emailsPerMonth: 2500,
     smsPerMonth: 100,
     locationLimit: 1,
@@ -65,7 +66,7 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
       "reviewManagement",
       "smsAutomation",
     ],
-    conversationsPerMonth: 5000,
+    conversationsPerMonth: null,
     emailsPerMonth: 5000,
     smsPerMonth: 500,
     locationLimit: 2,
@@ -75,7 +76,7 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
   premium: {
     priceMonthly: 499,
     includedModules: ALL_MODULES,
-    conversationsPerMonth: 15000,
+    conversationsPerMonth: null,
     emailsPerMonth: 15000,
     smsPerMonth: 1500,
     locationLimit: 5,
@@ -207,22 +208,128 @@ export function effectiveMonthlyCents(
   return dollars === null ? null : dollars * 100;
 }
 
-// --- Overage accounting -----------------------------------------------------
-// Once a pooled allowance is exceeded, extra units are metered at these rates.
-// Charging is activated with billing (Stripe slice); until then this surfaces
-// the overage so tenants see it coming. Overage applies to founders too.
+// --- AI credits (token-based conversation economy) --------------------------
+// Conversations no longer have a hard cap. Each tier includes a monthly dollar
+// credit consumed by BILLABLE tokens (input + output; cache reads are our cost
+// only). Past the allowance, usage keeps working and accrues overage at 3× the
+// credit rate, billed up-front in whole $3 blocks per 100K tokens.
 
-export type MeteredUnit = "conversations" | "emails" | "sms";
+/** Included monthly AI-credit grant in cents (null = custom/Enterprise). */
+export function creditGrantCents(plan: Plan): number | null {
+  const cents: Record<Tier, number | null> = {
+    starter: 1500, // $15
+    professional: 3000, // $30
+    premium: 5000, // $50
+    enterprise: null, // custom / unlimited
+  };
+  return cents[plan];
+}
 
-/** Cents charged per block of units past the cap, and the block size. */
+/** Credit rate: $1 of credit buys this many billable tokens (i.e. $10 / 1M). */
+export const CREDIT_TOKENS_PER_DOLLAR = 100_000;
+/** Overage past the credit allowance: $3 per 100K billable tokens (3× credit). */
+export const OVERAGE_TOKENS_PER_BLOCK = 100_000;
+export const OVERAGE_CENTS_PER_BLOCK = 300;
+
+/** Included billable-token allowance for a plan (null = unlimited/custom). */
+export function creditTokens(plan: Plan): number | null {
+  const grant = creditGrantCents(plan);
+  return grant === null ? null : (grant / 100) * CREDIT_TOKENS_PER_DOLLAR;
+}
+
+/** Cost, in cents, of `tokens` billable tokens at the credit rate ($10 / 1M). */
+export function creditCostCents(tokens: number): number {
+  return (tokens / CREDIT_TOKENS_PER_DOLLAR) * 100;
+}
+
+// --- Display denomination: "credits" ----------------------------------------
+// Customers never see dollars for AI usage — they see a whole-number credit
+// balance. $1 = 100 credits, so 1 credit = 1¢ and 1 credit = 1,000 tokens
+// (CREDIT_TOKENS_PER_DOLLAR / CREDITS_PER_DOLLAR). We store cents + tokens on the
+// backend and render credits in the UI via `creditsFromCents`.
+export const CREDITS_PER_DOLLAR = 100;
+export const TOKENS_PER_CREDIT = CREDIT_TOKENS_PER_DOLLAR / CREDITS_PER_DOLLAR; // 1,000
+
+/** A cents amount rendered as a whole-number credit count (for the UI). */
+export function creditsFromCents(cents: number): number {
+  return Math.round((cents / 100) * CREDITS_PER_DOLLAR);
+}
+
+/** Overage cents for billable tokens past the allowance (up-front $3/100K blocks). */
+export function conversationOverageCents(overTokens: number): number {
+  if (overTokens <= 0) return 0;
+  return Math.ceil(overTokens / OVERAGE_TOKENS_PER_BLOCK) * OVERAGE_CENTS_PER_BLOCK;
+}
+
+export interface CreditStatus {
+  grantedCents: number | null; // null = unlimited (Enterprise)
+  usedCents: number;
+  remainingCents: number | null;
+  allowanceTokens: number | null;
+  usedTokens: number;
+  overTokens: number;
+  overageBlocks: number;
+  overageCents: number;
+}
+
+/** An account's AI-credit position for the month, given billable tokens used. */
+export function creditStatus(plan: Plan, billableTokens: number): CreditStatus {
+  const grant = creditGrantCents(plan);
+  const allowance = creditTokens(plan);
+  if (grant === null || allowance === null) {
+    return {
+      grantedCents: null,
+      usedCents: Math.round(creditCostCents(billableTokens)),
+      remainingCents: null,
+      allowanceTokens: null,
+      usedTokens: billableTokens,
+      overTokens: 0,
+      overageBlocks: 0,
+      overageCents: 0,
+    };
+  }
+  const overTokens = Math.max(0, billableTokens - allowance);
+  const usedCents = Math.min(grant, Math.round(creditCostCents(billableTokens)));
+  return {
+    grantedCents: grant,
+    usedCents,
+    remainingCents: Math.max(0, grant - usedCents),
+    allowanceTokens: allowance,
+    usedTokens: billableTokens,
+    overTokens,
+    overageBlocks: overTokens > 0 ? Math.ceil(overTokens / OVERAGE_TOKENS_PER_BLOCK) : 0,
+    overageCents: conversationOverageCents(overTokens),
+  };
+}
+
+// --- Overage accounting (emails + SMS) --------------------------------------
+// Emails/SMS still have a hard monthly cap with block-based overage display.
+// (Conversations moved to the token-credit model above.)
+
+export type MeteredUnit = "emails" | "sms";
+
+/** Auto-charged overage once you pass a monthly cap — deliberately per-unit and
+ *  pricey so buying a prepaid bundle (below) is always the better deal. */
 export const OVERAGE_RATES: Record<
   MeteredUnit,
   { per: number; cents: number }
 > = {
-  conversations: { per: 1000, cents: 1000 }, // $10 / 1,000
-  emails: { per: 1000, cents: 500 }, // $5 / 1,000
-  sms: { per: 100, cents: 1000 }, // $10 / 100
+  emails: { per: 1, cents: 5 }, // $0.05 / email
+  sms: { per: 1, cents: 50 }, // $0.50 / SMS
 };
+
+/** Prepaid bundles — the cheaper way to add allowance (live with billing). */
+export const BUNDLE_RATES: Record<
+  MeteredUnit,
+  { units: number; cents: number }
+> = {
+  emails: { units: 1000, cents: 500 }, // $5 / 1,000
+  sms: { units: 100, cents: 1000 }, // $10 / 100
+};
+
+/** AI-credit top-up pack, in cents (dollar-denominated credits; live with
+ *  billing). Cheaper than letting AI usage run into overage. */
+export const CREDIT_PACK_CENTS = 1000; // $10
 
 /** Units used beyond the cap (0 when under, or when the plan is unlimited). */
 export function overageUnits(used: number, cap: number | null): number {

@@ -41,6 +41,7 @@ import type * as lib_calendarState from "../lib/calendarState.js";
 import type * as lib_errors from "../lib/errors.js";
 import type * as lib_keys from "../lib/keys.js";
 import type * as lib_leoPrompt from "../lib/leoPrompt.js";
+import type * as lib_modelPricing from "../lib/modelPricing.js";
 import type * as lib_resend from "../lib/resend.js";
 import type * as lib_secretsNode from "../lib/secretsNode.js";
 import type * as lib_slots from "../lib/slots.js";
@@ -105,6 +106,7 @@ declare const fullApi: ApiFromModules<{
   "lib/errors": typeof lib_errors;
   "lib/keys": typeof lib_keys;
   "lib/leoPrompt": typeof lib_leoPrompt;
+  "lib/modelPricing": typeof lib_modelPricing;
   "lib/resend": typeof lib_resend;
   "lib/secretsNode": typeof lib_secretsNode;
   "lib/slots": typeof lib_slots;

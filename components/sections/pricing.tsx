@@ -11,6 +11,7 @@ import {
   annualInfo,
   additionalLocationPrice,
   overageRates,
+  bundles,
 } from "@/lib/site-config";
 
 function Check() {
@@ -150,10 +151,10 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
                   </td>
                 ))}
               </Row>
-              <Row label="Conversations / mo">
+              <Row label="AI credits / mo">
                 {pricingTiers.map((t) => (
-                  <td key={t.key} className={cellCls(t.featured)}>
-                    {num(t.conversations)}
+                  <td key={t.key} className={`${cellCls(t.featured)} text-bone`}>
+                    {t.credits.toLocaleString()}
                   </td>
                 ))}
               </Row>
@@ -171,6 +172,19 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
                   </td>
                 ))}
               </Row>
+              {/* Overage — same rate on every plan when you go over. */}
+              {overageRates.map((o) => (
+                <Row key={o.label} label={o.label}>
+                  {pricingTiers.map((t) => (
+                    <td key={t.key} className={`${cellCls(t.featured)} text-bone`}>
+                      {o.price}{" "}
+                      <span className="text-xs font-normal text-faint">
+                        {o.unit}
+                      </span>
+                    </td>
+                  ))}
+                </Row>
+              ))}
               <tr>
                 <td className="p-3" />
                 {pricingTiers.map((t) => (
@@ -206,13 +220,18 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
           </p>
           <div className="rounded-xl border border-line bg-surface/40 p-5">
             <div className="font-mono text-xs uppercase tracking-wider text-faint">
-              If you go over your monthly allowance
+              Bundles you can buy
             </div>
+            <p className="mt-1 text-xs text-faint">
+              Top up anytime — always cheaper than running into overage.
+            </p>
             <div className="mt-3 grid grid-cols-3 gap-3">
-              {overageRates.map((o) => (
-                <div key={o.label}>
-                  <div className="font-display text-lg text-bone">{o.rate}</div>
-                  <div className="mt-0.5 text-xs text-faint">{o.label}</div>
+              {bundles.map((b) => (
+                <div key={b.label}>
+                  <div className="font-display text-lg text-bone">{b.amount}</div>
+                  <div className="mt-0.5 text-xs text-faint">
+                    {b.label} · {b.unit}
+                  </div>
                 </div>
               ))}
             </div>
