@@ -6,10 +6,16 @@ import {
   mutation,
   query,
 } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, TableNames } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { requireMember } from "./lib/authz";
+import {
+  requireMember,
+  requireOwnerOrPlatform,
+  platformAdminIdOrNull,
+} from "./lib/authz";
+import { recordAudit } from "./lib/audit";
 import { appError } from "./lib/errors";
 import { whiteLabelEnabled } from "./lib/tiers";
 import { planForBusiness } from "./lib/accounts";
@@ -107,11 +113,18 @@ export const provision = internalMutation({
     embedKeyHash: v.string(),
     embedKey: v.string(),
     profile: profileValidator,
+    // Install-first extras. Self-serve (the wizard) leaves these unset →
+    // owner = caller, provisioning "self", status "draft". The installer path
+    // (platform.provisionForClient) passes an explicit shell owner + installerId.
+    ownerUserId: v.optional(v.id("users")),
+    provisioning: v.optional(v.union(v.literal("self"), v.literal("installer"))),
+    installerId: v.optional(v.id("users")),
   },
   returns: v.id("businesses"),
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) appError("UNAUTHENTICATED", "Please sign in to continue.");
+    const caller = await getAuthUserId(ctx);
+    if (!caller) appError("UNAUTHENTICATED", "Please sign in to continue.");
+    const userId = args.ownerUserId ?? caller;
 
     const existing = await ctx.db
       .query("businesses")
@@ -119,7 +132,7 @@ export const provision = internalMutation({
       .unique();
     if (existing) appError("CONFLICT", `The slug "${args.slug}" is already taken.`);
 
-    // Resolve (or lazily create) the caller's account. An account owns exactly
+    // Resolve (or lazily create) the owner's account. An account owns exactly
     // one business — reject a second (locations, not projects, are the unit).
     const accountId = await getOrCreateAccount(ctx, userId, args.tier);
     const account = await ctx.db.get(accountId);
@@ -131,12 +144,16 @@ export const provision = internalMutation({
     }
     const plan = account?.plan ?? args.tier;
 
+    const provisioning = args.provisioning ?? "self";
     const p = args.profile;
     const businessId = await ctx.db.insert("businesses", {
       name: args.name,
       slug: args.slug,
       accountId,
-      status: "trial",
+      // Every business starts pre-live and goes live via the go-live checklist.
+      status: provisioning === "installer" ? "installing" : "draft",
+      provisioning,
+      installerId: args.installerId,
       domains: [],
       embedKeyPrefix: args.embedKeyPrefix,
       embedKeyHash: args.embedKeyHash,
@@ -295,6 +312,134 @@ export const updateBranding = mutation({
   },
 });
 
+/** Normalize a user-entered domain to the bare host the widget origin check
+ *  compares against (strip scheme/path, lowercase). Returns null if unusable. */
+function normalizeDomain(raw: string): string | null {
+  const t = raw.trim().toLowerCase();
+  if (!t) return null;
+  const host = t
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/:\d+$/, "");
+  // Basic sanity: at least one dot or "localhost".
+  if (!host || (!host.includes(".") && host !== "localhost")) return null;
+  return host;
+}
+
+/** Set the widget's allowed origins (manager only). The widget only mounts on
+ *  these hosts; also a go-live requirement. */
+export const setDomains = mutation({
+  args: { slug: v.string(), domains: v.array(v.string()) },
+  returns: v.array(v.string()),
+  handler: async (ctx, { slug, domains }) => {
+    const business = await ctx.db
+      .query("businesses")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (!business) appError("NOT_FOUND", "That business doesn't exist.");
+    await requireMember(ctx, business._id, "admin");
+    const clean = Array.from(
+      new Set(domains.map(normalizeDomain).filter((d): d is string => !!d)),
+    );
+    await ctx.db.patch(business._id, { domains: clean });
+    return clean;
+  },
+});
+
+// --- Go-live lifecycle -------------------------------------------------------
+
+async function bySlugOrThrow(
+  ctx: QueryCtx,
+  slug: string,
+): Promise<Doc<"businesses">> {
+  const business = await ctx.db
+    .query("businesses")
+    .withIndex("by_slug", (q) => q.eq("slug", slug))
+    .unique();
+  if (!business) appError("NOT_FOUND", "That business doesn't exist.");
+  return business;
+}
+
+/** Whether a business meets the go-live checklist (knowledge + ≥1 domain). A
+ *  member (or platform admin) may read it; it powers the go-live UI. */
+export const readiness = query({
+  args: { slug: v.string() },
+  returns: v.object({
+    status: v.string(),
+    knowledgePresent: v.boolean(),
+    domainsSet: v.boolean(),
+    ready: v.boolean(),
+  }),
+  handler: async (ctx, { slug }) => {
+    const business = await bySlugOrThrow(ctx, slug);
+    if (!(await platformAdminIdOrNull(ctx))) {
+      await requireMember(ctx, business._id, "staff");
+    }
+    const knowledge = await ctx.db
+      .query("knowledge")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .unique();
+    const knowledgePresent = knowledge !== null;
+    const domainsSet = business.domains.length > 0;
+    return {
+      status: business.status,
+      knowledgePresent,
+      domainsSet,
+      ready: knowledgePresent && domainsSet,
+    };
+  },
+});
+
+/** Flip a business live once the checklist passes (owner or platform admin). */
+export const goLive = mutation({
+  args: { slug: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { slug }) => {
+    const business = await bySlugOrThrow(ctx, slug);
+    const actorUserId = await requireOwnerOrPlatform(ctx, business);
+    if (business.status === "live") return null;
+
+    const knowledge = await ctx.db
+      .query("knowledge")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .unique();
+    if (!knowledge) {
+      appError("FORBIDDEN", "Add your business knowledge before going live.");
+    }
+    if (business.domains.length === 0) {
+      appError("FORBIDDEN", "Allow-list at least one website domain before going live.");
+    }
+
+    await ctx.db.patch(business._id, { status: "live" });
+    await recordAudit(ctx, {
+      actorUserId,
+      scope: "business",
+      businessId: business._id,
+      action: "business.goLive",
+    });
+    return null;
+  },
+});
+
+/** Take a live business offline (owner or platform admin). */
+export const pause = mutation({
+  args: { slug: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { slug }) => {
+    const business = await bySlugOrThrow(ctx, slug);
+    const actorUserId = await requireOwnerOrPlatform(ctx, business);
+    if (business.status !== "live") return null;
+    await ctx.db.patch(business._id, { status: "paused" });
+    await recordAudit(ctx, {
+      actorUserId,
+      scope: "business",
+      businessId: business._id,
+      action: "business.pause",
+    });
+    return null;
+  },
+});
+
 /**
  * Internal: resolve a business by an embed-key prefix for the public widget.
  * Returns the stored secret hash + origin allow-list so the calling action can
@@ -308,7 +453,8 @@ export const byEmbedPrefix = internalQuery({
       slug: v.string(),
       embedKeyHash: v.string(),
       domains: v.array(v.string()),
-      suspended: v.boolean(),
+      // The widget only serves when the business is live.
+      serving: v.boolean(),
     }),
     v.null(),
   ),
@@ -325,7 +471,7 @@ export const byEmbedPrefix = internalQuery({
       slug: business.slug,
       embedKeyHash: business.embedKeyHash,
       domains: business.domains,
-      suspended: business.status === "suspended",
+      serving: business.status === "live",
     };
   },
 });

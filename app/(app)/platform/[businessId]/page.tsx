@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { errorText } from "@/lib/errors";
 
 const th =
   "px-3 py-2 text-left font-mono text-[0.6rem] uppercase tracking-wider text-faint";
@@ -48,6 +50,112 @@ function Section({
 
 function Empty({ label }: { label: string }) {
   return <div className="p-4 text-sm text-faint">{label}</div>;
+}
+
+const btn =
+  "h-9 rounded-full px-4 text-sm font-medium transition-colors disabled:opacity-50";
+
+function InstallActions({
+  slug,
+  businessId,
+  status,
+  provisioning,
+}: {
+  slug: string;
+  businessId: Id<"businesses">;
+  status: string;
+  provisioning: string;
+}) {
+  const goLive = useMutation(api.businesses.goLive);
+  const pause = useMutation(api.businesses.pause);
+  const setProvisioning = useMutation(api.platform.setProvisioning);
+  const invite = useAction(api.invitations.invite);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function run(key: string, fn: () => Promise<unknown>, ok?: string) {
+    setMsg(null);
+    setBusy(key);
+    try {
+      await fn();
+      if (ok) setMsg(ok);
+    } catch (e) {
+      setMsg(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="mt-6 rounded-xl border border-line bg-surface/40 p-5">
+      <div className="font-mono text-xs uppercase tracking-wider text-faint">
+        Install actions
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {status === "live" ? (
+          <button
+            onClick={() => run("pause", () => pause({ slug }))}
+            disabled={busy !== null}
+            className={`${btn} border border-line-strong text-muted hover:text-ember-deep`}
+          >
+            {busy === "pause" ? "…" : "Take offline"}
+          </button>
+        ) : (
+          <button
+            onClick={() => run("golive", () => goLive({ slug }), "Now live.")}
+            disabled={busy !== null}
+            className={`${btn} bg-ember text-[#160b04] hover:bg-flare`}
+          >
+            {busy === "golive" ? "…" : "Go live"}
+          </button>
+        )}
+        <button
+          onClick={() =>
+            run(
+              "handoff",
+              () =>
+                setProvisioning({
+                  businessId,
+                  mode: provisioning === "installer" ? "self" : "installer",
+                }),
+              provisioning === "installer"
+                ? "Released to the client."
+                : "Now installer-managed.",
+            )
+          }
+          disabled={busy !== null}
+          className={`${btn} border border-line-strong text-bone hover:border-ember`}
+        >
+          {provisioning === "installer" ? "Release to client" : "Take over install"}
+        </button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <input
+          value={inviteEmail}
+          onChange={(e) => setInviteEmail(e.target.value)}
+          placeholder="client@email.com"
+          type="email"
+          className="h-9 w-64 rounded-lg border border-line-strong bg-surface px-3 text-sm text-bone placeholder:text-faint focus-visible:border-ember"
+        />
+        <button
+          onClick={() =>
+            run(
+              "invite",
+              () => invite({ businessId, email: inviteEmail, role: "owner" }),
+              "Owner invite sent.",
+            )
+          }
+          disabled={busy !== null || !inviteEmail.includes("@")}
+          className={`${btn} border border-line-strong text-bone hover:border-ember`}
+        >
+          {busy === "invite" ? "…" : "Invite owner"}
+        </button>
+      </div>
+      {msg && <p className="mt-3 text-sm text-bone-dim">{msg}</p>}
+    </section>
+  );
 }
 
 export default function PlatformBusinessDetail() {
@@ -96,7 +204,18 @@ export default function PlatformBusinessDetail() {
           <dt className="inline text-faint">Domains:</dt>{" "}
           {business.domains.length ? business.domains.join(", ") : "—"}
         </div>
+        <div>
+          <dt className="inline text-faint">Provisioning:</dt>{" "}
+          {business.provisioning}
+        </div>
       </dl>
+
+      <InstallActions
+        slug={business.slug}
+        businessId={business._id}
+        status={business.status}
+        provisioning={business.provisioning}
+      />
 
       <Section title="Upcoming bookings" count={upcoming.length}>
         {upcoming.length === 0 ? (

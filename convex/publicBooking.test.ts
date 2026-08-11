@@ -30,6 +30,8 @@ async function setup() {
   const business = await t.run((ctx) =>
     ctx.db.query("businesses").withIndex("by_slug", (q) => q.eq("slug", "clip")).unique(),
   );
+  // The widget only serves a live business.
+  await t.run((ctx) => ctx.db.patch(business!._id, { status: "live" as const }));
   const staffId = (await t.run((ctx) =>
     ctx.db.query("staff").withIndex("by_business", (q) => q.eq("businessId", business!._id)).unique(),
   ))!._id;

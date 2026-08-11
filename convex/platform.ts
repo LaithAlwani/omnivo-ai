@@ -1,11 +1,23 @@
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { internalMutation, query } from "./_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { requirePlatformAdmin } from "./lib/authz";
+import { recordAudit } from "./lib/audit";
 import { appError } from "./lib/errors";
 import { planForBusiness } from "./lib/accounts";
 import { creditStatus, usagePeriod } from "./lib/tiers";
+import { planValidator } from "./schema";
+import { generateEmbedKey } from "./lib/keys";
+
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])?$/;
 
 // -----------------------------------------------------------------------------
 // Platform plane — cross-tenant, operators only. Every read starts with
@@ -242,6 +254,7 @@ export const businessDetail = query({
         slug: business.slug,
         tier: await planForBusiness(ctx, business._id),
         status: business.status,
+        provisioning: business.provisioning ?? "self",
         timezone: business.timezone ?? null,
         domains: business.domains,
         createdAt: business._creationTime,
@@ -292,5 +305,125 @@ export const connectionHealth = query({
         };
       }),
     );
+  },
+});
+
+// --- Installer provisioning + hand-off --------------------------------------
+
+/** Assert the caller is a superadmin; returns their id (for the provision action). */
+export const requireSuperadmin = internalQuery({
+  args: {},
+  returns: v.id("users"),
+  handler: async (ctx) => {
+    const { userId } = await requirePlatformAdmin(ctx, "superadmin");
+    return userId;
+  },
+});
+
+/** Find-or-create a placeholder user for a client email (no auth attached until
+ *  they claim it via an invite). */
+export const ensureShellUser = internalMutation({
+  args: { email: v.string() },
+  returns: v.id("users"),
+  handler: async (ctx, { email }) => {
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", email))
+      .unique();
+    if (existing) return existing._id;
+    return await ctx.db.insert("users", { email });
+  },
+});
+
+/** Write an audit row (thin Convex wrapper over the audit helper). */
+export const audit = internalMutation({
+  args: {
+    actorUserId: v.id("users"),
+    scope: v.union(v.literal("platform"), v.literal("business")),
+    action: v.string(),
+    businessId: v.optional(v.id("businesses")),
+    targetId: v.optional(v.string()),
+    meta: v.optional(v.any()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await recordAudit(ctx, args);
+    return null;
+  },
+});
+
+/** Provision a tenant on a client's behalf (superadmin). The business is owned
+ *  by a placeholder shell user (the client's email) and marked installer-managed;
+ *  the client claims it later via an invite. */
+export const provisionForClient = action({
+  args: {
+    clientEmail: v.string(),
+    name: v.string(),
+    slug: v.string(),
+    tier: v.optional(planValidator),
+  },
+  returns: v.object({ businessId: v.id("businesses"), slug: v.string() }),
+  handler: async (ctx, args): Promise<{ businessId: Id<"businesses">; slug: string }> => {
+    const installerId = await ctx.runQuery(internal.platform.requireSuperadmin, {});
+    const slug = args.slug.trim().toLowerCase();
+    if (!SLUG_RE.test(slug)) {
+      appError("INVALID_INPUT", "Use 3–40 lowercase letters, numbers, or hyphens.");
+    }
+    const email = args.clientEmail.trim().toLowerCase();
+    if (!email.includes("@")) appError("INVALID_INPUT", "Enter a valid client email.");
+
+    const { key, prefix, hash } = await generateEmbedKey();
+    const ownerUserId = await ctx.runMutation(internal.platform.ensureShellUser, {
+      email,
+    });
+    const businessId: Id<"businesses"> = await ctx.runMutation(
+      internal.businesses.provision,
+      {
+        name: args.name,
+        slug,
+        tier: args.tier ?? "starter",
+        embedKeyPrefix: prefix,
+        embedKeyHash: hash,
+        embedKey: key,
+        ownerUserId,
+        provisioning: "installer",
+        installerId,
+      },
+    );
+    await ctx.runMutation(internal.platform.audit, {
+      actorUserId: installerId,
+      scope: "platform",
+      businessId,
+      action: "platform.provisionForClient",
+      meta: { clientEmail: email },
+    });
+    return { businessId, slug };
+  },
+});
+
+/** Hand a tenant between self-serve and installer-managed (superadmin). Flips
+ *  `provisioning` + sets/clears `installerId` on the same row — who may act
+ *  changes, the data model doesn't. */
+export const setProvisioning = mutation({
+  args: {
+    businessId: v.id("businesses"),
+    mode: v.union(v.literal("self"), v.literal("installer")),
+  },
+  returns: v.null(),
+  handler: async (ctx, { businessId, mode }) => {
+    const { userId } = await requirePlatformAdmin(ctx, "superadmin");
+    const business = await ctx.db.get(businessId);
+    if (!business) appError("NOT_FOUND", "That business doesn't exist.");
+    await ctx.db.patch(businessId, {
+      provisioning: mode,
+      installerId: mode === "installer" ? userId : undefined,
+    });
+    await recordAudit(ctx, {
+      actorUserId: userId,
+      scope: "platform",
+      businessId,
+      action: `platform.handoff.${mode}`,
+    });
+    return null;
   },
 });

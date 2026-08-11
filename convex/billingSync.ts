@@ -164,15 +164,16 @@ export const applySubscription = internalMutation({
         : {}),
     });
 
-    // Active/trialing subscriptions activate the account's businesses; other
-    // states (past_due, unpaid) leave status alone so a recovered payment resumes.
+    // Active/trialing subscription resumes a previously-paused business (billing
+    // recovered). It does NOT force a business live — going live is gated by the
+    // go-live checklist, not billing.
     if (args.status === "active" || args.status === "trialing") {
       const businesses = await ctx.db
         .query("businesses")
         .withIndex("by_account", (q) => q.eq("accountId", args.accountId))
         .collect();
       for (const b of businesses) {
-        if (b.status !== "active") await ctx.db.patch(b._id, { status: "active" });
+        if (b.status === "paused") await ctx.db.patch(b._id, { status: "live" });
       }
     }
 
@@ -181,7 +182,7 @@ export const applySubscription = internalMutation({
   },
 });
 
-/** A subscription ended (canceled/deleted): flag the account and suspend its
+/** A subscription ended (canceled/deleted): flag the account and pause its live
  *  businesses so the widget stops. Plan/entitlements are left intact so
  *  re-subscribing restores service instantly. Drives `customer.subscription.deleted`. */
 export const clearSubscription = internalMutation({
@@ -199,7 +200,7 @@ export const clearSubscription = internalMutation({
       .withIndex("by_account", (q) => q.eq("accountId", accountId))
       .collect();
     for (const b of businesses) {
-      if (b.status === "active") await ctx.db.patch(b._id, { status: "suspended" });
+      if (b.status === "live") await ctx.db.patch(b._id, { status: "paused" });
     }
     return null;
   },

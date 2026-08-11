@@ -89,7 +89,7 @@ test("backfill — legacy businesses gain an account and pooled counters", async
     const businessId = await ctx.db.insert("businesses", {
       slug: "legacy",
       name: "Legacy Co",
-      status: "trial",
+      status: "draft",
       tier: "professional",
       domains: [],
       embedKeyPrefix: "eeeeee",

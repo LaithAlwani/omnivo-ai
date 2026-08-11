@@ -5,9 +5,24 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { requireMemberBySlug } from "./lib/authz";
+import type { QueryCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import { requireInstallerAccess } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { entitlementsFor } from "./entitlements";
+
+/** Resolve a business by slug or throw. */
+async function businessBySlug(
+  ctx: QueryCtx,
+  slug: string,
+): Promise<Doc<"businesses">> {
+  const business = await ctx.db
+    .query("businesses")
+    .withIndex("by_slug", (q) => q.eq("slug", slug))
+    .unique();
+  if (!business) appError("NOT_FOUND", "That business doesn't exist.");
+  return business;
+}
 
 // -----------------------------------------------------------------------------
 // Integrations (default runtime) — storage + reads for the client's external
@@ -35,7 +50,8 @@ export const providerValidator = v.union(
 export const list = query({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {
-    const { business } = await requireMemberBySlug(ctx, slug, "admin");
+    const business = await businessBySlug(ctx, slug);
+    await requireInstallerAccess(ctx, business);
     const enabled = (await entitlementsFor(ctx, business._id)).integrationsEnabled;
     const rows = await ctx.db
       .query("integrations")
@@ -150,7 +166,8 @@ export const saveConnection = internalMutation({
   },
   returns: v.id("integrations"),
   handler: async (ctx, args) => {
-    const { business } = await requireMemberBySlug(ctx, args.slug, "admin");
+    const business = await businessBySlug(ctx, args.slug);
+    await requireInstallerAccess(ctx, business);
     const enabled = (await entitlementsFor(ctx, business._id)).integrationsEnabled;
     if (!enabled) {
       appError(
@@ -193,7 +210,8 @@ export const testContext = internalQuery({
     v.null(),
   ),
   handler: async (ctx, { slug, integrationId }) => {
-    const { business } = await requireMemberBySlug(ctx, slug, "admin");
+    const business = await businessBySlug(ctx, slug);
+    await requireInstallerAccess(ctx, business);
     const row = await ctx.db.get(integrationId);
     if (!row || row.businessId !== business._id) {
       appError("NOT_FOUND", "That integration no longer exists.");
@@ -227,7 +245,8 @@ export const remove = mutation({
   args: { slug: v.string(), integrationId: v.id("integrations") },
   returns: v.null(),
   handler: async (ctx, { slug, integrationId }) => {
-    const { business } = await requireMemberBySlug(ctx, slug, "admin");
+    const business = await businessBySlug(ctx, slug);
+    await requireInstallerAccess(ctx, business);
     const row = await ctx.db.get(integrationId);
     if (!row || row.businessId !== business._id) {
       appError("NOT_FOUND", "That integration no longer exists.");

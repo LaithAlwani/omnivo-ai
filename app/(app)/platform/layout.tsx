@@ -10,9 +10,17 @@ import { AppShell, SidebarLink } from "@/components/app/app-shell";
 function PlatformNav() {
   const pathname = usePathname();
   return (
-    <SidebarLink href="/platform" active={pathname.startsWith("/platform")}>
-      Businesses
-    </SidebarLink>
+    <>
+      <SidebarLink
+        href="/platform"
+        active={pathname === "/platform" || /^\/platform\/[^/]+$/.test(pathname)}
+      >
+        Businesses
+      </SidebarLink>
+      <SidebarLink href="/platform/new" active={pathname === "/platform/new"}>
+        New tenant
+      </SidebarLink>
+    </>
   );
 }
 

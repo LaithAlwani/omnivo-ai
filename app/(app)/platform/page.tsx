@@ -25,11 +25,11 @@ function Tier({ tier }: { tier: string }) {
 
 function Status({ status }: { status: string }) {
   const tone =
-    status === "active"
+    status === "live"
       ? "text-emerald-400"
-      : status === "suspended"
+      : status === "paused"
         ? "text-red-400"
-        : "text-flare";
+        : "text-flare"; // draft / installing
   return (
     <span className={`font-mono text-[0.7rem] uppercase tracking-wider ${tone}`}>
       {status}

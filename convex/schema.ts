@@ -85,11 +85,23 @@ export default defineSchema({
     // usage + plan limits resolve through here. Optional only during the account
     // backfill migration; treated as required by code.
     accountId: v.optional(v.id("accounts")),
+    // Install lifecycle. The widget/public chat only serves when `live`.
+    // draft → being set up (self) · installing → installer setting up ·
+    // live → serving traffic · paused → suspended (e.g. billing lapsed).
     status: v.union(
-      v.literal("trial"),
-      v.literal("active"),
-      v.literal("suspended"),
+      v.literal("draft"),
+      v.literal("installing"),
+      v.literal("live"),
+      v.literal("paused"),
     ),
+    // Who configures this tenant. "self" → the client manages it; "installer" →
+    // an operator provisions/connects on their behalf (edited via the platform
+    // console). The flag changes only who may act, never the data model.
+    provisioning: v.optional(
+      v.union(v.literal("self"), v.literal("installer")),
+    ),
+    // The installer (a platform-admin user) attributed to this tenant, if any.
+    installerId: v.optional(v.id("users")),
     // Legacy per-business plan. Superseded by the owning account's `plan`; kept
     // (optional) as the migration source and removed in a later cleanup.
     tier: v.optional(tierValidator),
@@ -341,6 +353,21 @@ export default defineSchema({
   })
     .index("by_tokenHash", ["tokenHash"])
     .index("by_user", ["userId"]),
+
+  // Pending membership invitations (installer- or owner-issued). The plaintext
+  // token lives only in the emailed link; the hash is stored. Accepting adds the
+  // caller as a member (or, for an installer "claim", transfers ownership from
+  // the placeholder shell user to the real one).
+  invitations: defineTable({
+    businessId: v.id("businesses"),
+    email: v.string(),
+    role: roleValidator,
+    tokenHash: v.string(),
+    expiresAt: v.number(),
+    invitedByUserId: v.id("users"),
+  })
+    .index("by_tokenHash", ["tokenHash"])
+    .index("by_business", ["businessId"]),
 
   // Widget chat sessions — metadata only (no transcripts, to avoid storing PII).
   // One row per client session (`conversationKey`); message turns bump the

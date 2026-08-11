@@ -37,9 +37,11 @@ async function seed(
 // Subscription lifecycle
 // -----------------------------------------------------------------------------
 
-test("applySubscription sets plan + status + ids, re-syncs entitlements, activates", async () => {
+test("applySubscription sets plan + ids, re-syncs entitlements, resumes paused", async () => {
   const t = convexTest(schema, modules);
   const { businessId, accountId } = await seed(t, "acme", "aaaaaa", "starter");
+  // A paused (billing-lapsed) business is resumed by a recovered subscription.
+  await t.run((ctx) => ctx.db.patch(businessId, { status: "paused" as const }));
 
   await t.mutation(internal.billingSync.applySubscription, {
     accountId,
@@ -61,9 +63,9 @@ test("applySubscription sets plan + status + ids, re-syncs entitlements, activat
   expect(account.foundingPartner).toBe(true);
   expect(account.billingCadence).toBe("monthly");
 
-  // Business is activated and its modules match the premium bundle.
+  // Paused business resumes to live; its modules match the premium bundle.
   const business = (await t.run((ctx) => ctx.db.get(businessId)))!;
-  expect(business.status).toBe("active");
+  expect(business.status).toBe("live");
   const features = await t.run((ctx) =>
     ctx.db
       .query("tenantFeatures")
@@ -101,18 +103,11 @@ test("founding is capped and locked once granted", async () => {
   expect(account.foundingPartner ?? false).toBe(false);
 });
 
-test("clearSubscription flags canceled and suspends the business", async () => {
+test("clearSubscription flags canceled and pauses a live business", async () => {
   const t = convexTest(schema, modules);
   const { businessId, accountId } = await seed(t, "gone", "cccccc", "professional");
-  await t.mutation(internal.billingSync.applySubscription, {
-    accountId,
-    stripeSubscriptionId: "sub_x",
-    plan: "professional",
-    cadence: "monthly",
-    status: "active",
-    paidLocations: 0,
-    founding: false,
-  });
+  // A live business whose subscription is canceled gets paused.
+  await t.run((ctx) => ctx.db.patch(businessId, { status: "live" as const }));
 
   await t.mutation(internal.billingSync.clearSubscription, {
     accountId,
@@ -123,7 +118,7 @@ test("clearSubscription flags canceled and suspends the business", async () => {
   expect(account.subscriptionStatus).toBe("canceled");
   expect(account.stripeSubscriptionId).toBeUndefined();
   const business = (await t.run((ctx) => ctx.db.get(businessId)))!;
-  expect(business.status).toBe("suspended");
+  expect(business.status).toBe("paused");
 });
 
 // -----------------------------------------------------------------------------

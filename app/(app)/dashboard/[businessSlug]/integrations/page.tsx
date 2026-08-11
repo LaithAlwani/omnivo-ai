@@ -26,7 +26,8 @@ const inputCls =
 
 function IntegrationsInner() {
   const b = useBusiness();
-  const canEdit = isManagerRole(b.role);
+  const installerManaged = b.provisioning === "installer";
+  const canEdit = isManagerRole(b.role) && !installerManaged;
   const data = useQuery(api.integrations.list, { slug: b.slug });
 
   if (data === undefined) {
@@ -45,10 +46,17 @@ function IntegrationsInner() {
           your scheduler, and new leads, bookings, and reviews sync out to your
           tools automatically.
         </p>
-        {!canEdit && (
+        {installerManaged ? (
           <p className="mt-4 rounded-lg border border-line bg-surface/50 px-4 py-3 text-sm text-muted">
-            View-only — ask an owner or admin to make changes.
+            Your installer manages these connections — contact them to make
+            changes.
           </p>
+        ) : (
+          !canEdit && (
+            <p className="mt-4 rounded-lg border border-line bg-surface/50 px-4 py-3 text-sm text-muted">
+              View-only — ask an owner or admin to make changes.
+            </p>
+          )
         )}
       </div>
 

@@ -1,14 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useBusiness } from "@/components/dashboard/business-context";
 import { WidgetKeyCard } from "@/components/dashboard/widget-key-card";
-
-const TRIAL_DAYS = 30;
-const DAY = 86_400_000;
 
 /** One emphasized word in the greeting. */
 function Em({ children }: { children: React.ReactNode }) {
@@ -16,27 +12,17 @@ function Em({ children }: { children: React.ReactNode }) {
 }
 
 // -----------------------------------------------------------------------------
-// The dashboard home: a trial meter, a 2×2 metric grid, this month's usage, and
-// an onboarding checklist — all wired to analytics.overview + the business
-// context. The trial countdown is derived from the account's age (no billing
-// backing yet), shown only while the business is on a trial.
+// The dashboard home: the install lifecycle status, a 2×2 metric grid, this
+// month's usage, and an onboarding checklist — all wired to analytics.overview
+// + the business context.
 // -----------------------------------------------------------------------------
 
 export default function OverviewPage() {
   const b = useBusiness();
   const stats = useQuery(api.analytics.overview, { slug: b.slug });
-  // One stable "now" for the whole render (matches the bookings page pattern).
-  const [nowMs] = useState(() => Date.now());
 
   const loading = stats === undefined;
   const tier = b.tier ?? "starter";
-
-  const isTrial = b.status === "trial";
-  const daysLeft = Math.max(
-    0,
-    TRIAL_DAYS - Math.floor((nowMs - b._creationTime) / DAY),
-  );
-  const trialEnded = isTrial && daysLeft <= 0;
 
   const noActivity =
     !loading &&
@@ -142,64 +128,31 @@ export default function OverviewPage() {
         </p>
       )}
 
-      {/* Trial meter — the signature. Shown while on a trial; otherwise a
-          compact plan/status line. */}
-      {isTrial ? (
-        <div className="mt-7">
-          <div className="flex h-[22px] items-end gap-[3px]" aria-hidden>
-            {Array.from({ length: TRIAL_DAYS }, (_, i) => {
-              const spent = TRIAL_DAYS - daysLeft;
-              let cls: string;
-              if (trialEnded || i < spent - 1) {
-                cls = "h-[9px] bg-line";
-              } else if (i === spent - 1) {
-                cls =
-                  "h-full bg-bone shadow-[0_0_14px_rgba(255,92,26,0.55)]";
-              } else {
-                cls = "h-full bg-ember";
-              }
-              return (
-                <span key={i} className={`flex-1 rounded-[2px] ${cls}`} />
-              );
-            })}
-          </div>
-          <div className="mt-3 flex items-baseline justify-between font-mono text-[11px] tracking-[0.07em]">
-            {trialEnded ? (
-              <>
-                <span className="text-ember">TRIAL ENDED</span>
-                <Link
-                  href={`/dashboard/${b.slug}/usage`}
-                  className="text-faint transition-colors hover:text-bone"
-                >
-                  CHOOSE A PLAN →
-                </Link>
-              </>
-            ) : (
-              <>
-                <span className="text-bone">
-                  TRIAL ·{" "}
-                  <span className="text-ember">
-                    {daysLeft === 1 ? "LAST DAY" : `${daysLeft} DAYS`}
-                  </span>
-                  {daysLeft === 1 ? "" : " LEFT"}
-                </span>
-                <span className="text-faint">{tier.toUpperCase()}</span>
-              </>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="mt-7 font-mono text-[11px] uppercase tracking-[0.07em]">
+      {/* Install lifecycle status. */}
+      <div className="mt-7 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.07em]">
+        <span>
           <span
             className={
-              b.status === "suspended" ? "text-ember-deep" : "text-ember"
+              b.status === "live"
+                ? "text-emerald-400"
+                : b.status === "paused"
+                  ? "text-ember-deep"
+                  : "text-ember"
             }
           >
             {b.status}
           </span>
           <span className="text-faint"> · {tier} plan</span>
-        </div>
-      )}
+        </span>
+        {b.status !== "live" && (
+          <Link
+            href={`/dashboard/${b.slug}/go-live`}
+            className="text-faint transition-colors hover:text-bone"
+          >
+            GO LIVE →
+          </Link>
+        )}
+      </div>
 
       {/* 2×2 metric grid */}
       <div className="mt-7 grid grid-cols-2 gap-3">

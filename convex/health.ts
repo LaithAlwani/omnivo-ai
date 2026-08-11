@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 
 // -----------------------------------------------------------------------------
 // Connection health — the failure-first spine. A cron pings each active booking
@@ -131,23 +132,29 @@ export const recordCheck = internalMutation({
       prevHealth !== "degraded" && health === "degraded";
     if (!transitionedToDegraded) return { transitionedToDegraded: false };
 
-    // Resolve the owner's email for the alert (Phase C retargets this to the
-    // installer).
+    // Alert the responsible party: the installer for installer-managed tenants,
+    // otherwise the business owner.
     const business = await ctx.db.get(integration.businessId);
-    const owner = await ctx.db
-      .query("memberships")
-      .withIndex("by_business", (q) =>
-        q.eq("businessId", integration.businessId),
-      )
-      .filter((q) => q.eq(q.field("role"), "owner"))
-      .first();
-    const ownerUser = owner ? await ctx.db.get(owner.userId) : null;
+    let alertUserId: Id<"users"> | null = null;
+    if (business?.provisioning === "installer" && business.installerId) {
+      alertUserId = business.installerId;
+    } else {
+      const owner = await ctx.db
+        .query("memberships")
+        .withIndex("by_business", (q) =>
+          q.eq("businessId", integration.businessId),
+        )
+        .filter((q) => q.eq(q.field("role"), "owner"))
+        .first();
+      alertUserId = owner ? owner.userId : null;
+    }
+    const alertUser = alertUserId ? await ctx.db.get(alertUserId) : null;
 
     return {
       transitionedToDegraded: true,
       businessName: business?.name,
       kind: integration.kind,
-      ownerEmail: ownerUser?.email ?? undefined,
+      ownerEmail: alertUser?.email ?? undefined,
     };
   },
 });

@@ -69,8 +69,8 @@ export async function verifyKey(
   if (!timingSafeEqual(hash, row.embedKeyHash)) {
     appError("INVALID_CREDENTIALS", "Invalid embed key.");
   }
-  if (row.suspended) {
-    appError("FORBIDDEN", "This business isn't accepting bookings right now.");
+  if (!row.serving) {
+    appError("FORBIDDEN", "This assistant isn't live yet.");
   }
   if (!originAllowed(row.domains, origin)) {
     appError("FORBIDDEN", "This site isn't allowed to use this key.");

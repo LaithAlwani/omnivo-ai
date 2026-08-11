@@ -141,6 +141,32 @@ export const sendPasswordResetEmail = internalAction({
   },
 });
 
+// --- Membership invitation ----------------------------------------------------
+
+export const sendInviteEmail = internalAction({
+  args: {
+    to: v.string(),
+    url: v.string(),
+    businessName: v.string(),
+    role: v.string(),
+  },
+  returns: v.null(),
+  handler: async (_ctx, { to, url, businessName, role }) => {
+    const intro = `You've been invited to ${businessName} on Omnivo AI as ${role === "owner" ? "the owner" : `a ${role}`}. Accept to get access.`;
+    await sendEmail({
+      to,
+      subject: `You're invited to ${businessName} on Omnivo AI`,
+      text: `${intro}\n\nAccept your invitation:\n${url}\n\n(This link expires in 7 days.)`,
+      html: emailShell(
+        `<h1 style="margin:16px 0 8px;font-size:20px;color:#ece4d8;">You're invited</h1>
+         <p style="margin:0 0 20px;font-size:14px;line-height:1.55;color:#b8ac9c;">${escapeHtml(intro)}</p>
+         <a href="${url}" style="display:inline-block;background:#ff5c1a;color:#160b04;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:9999px;font-size:14px;">Accept invitation</a>`,
+      ),
+    });
+    return null;
+  },
+});
+
 // --- Connection health alert --------------------------------------------------
 
 /** Operational alert to the business owner when a connection goes degraded — a

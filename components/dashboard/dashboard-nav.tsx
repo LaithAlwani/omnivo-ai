@@ -16,6 +16,7 @@ const PLAN_LABEL: Record<string, string> = {
 function navItems(slug: string) {
   return [
     { label: "Overview", href: `/dashboard/${slug}`, exact: true },
+    { label: "Go live", href: `/dashboard/${slug}/go-live`, exact: false },
     // Branding, Locations, Team, Services & Knowledge live behind this one entry
     // now — see app/(app)/dashboard/[businessSlug]/business/ and its sub-tabs.
     { label: "Business", href: `/dashboard/${slug}/business`, exact: false },

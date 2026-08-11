@@ -93,3 +93,49 @@ export async function requirePlatformAdmin(
   }
   return { userId, admin };
 }
+
+/** Non-throwing platform check → the caller's id if they're an operator, else
+ *  null. Used to let a platform admin act on any tenant without membership. */
+export async function platformAdminIdOrNull(
+  ctx: QueryCtx,
+): Promise<Id<"users"> | null> {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) return null;
+  const admin = await ctx.db
+    .query("platformAdmins")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .unique();
+  return admin ? userId : null;
+}
+
+/** Who may edit a tenant's connections/config: a platform admin always, or a
+ *  member-admin when the tenant self-manages (`provisioning !== "installer"`).
+ *  An installer-provisioned tenant is edited only through the platform console.
+ *  Returns the acting user's id. */
+export async function requireInstallerAccess(
+  ctx: QueryCtx,
+  business: Doc<"businesses">,
+): Promise<Id<"users">> {
+  const platformId = await platformAdminIdOrNull(ctx);
+  if (platformId) return platformId;
+  if (business.provisioning === "installer") {
+    appError(
+      "FORBIDDEN",
+      "This tenant is installer-managed — contact your installer to change connections.",
+    );
+  }
+  const { userId } = await requireMember(ctx, business._id, "admin");
+  return userId;
+}
+
+/** Who may run lifecycle ops (go-live / pause / invite): the business owner, or
+ *  a platform admin. Returns the acting user's id. */
+export async function requireOwnerOrPlatform(
+  ctx: QueryCtx,
+  business: Doc<"businesses">,
+): Promise<Id<"users">> {
+  const platformId = await platformAdminIdOrNull(ctx);
+  if (platformId) return platformId;
+  const { userId } = await requireMember(ctx, business._id, "owner");
+  return userId;
+}
