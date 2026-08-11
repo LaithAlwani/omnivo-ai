@@ -19,6 +19,7 @@ import {
   overageUnits,
   overageCostCents,
   creditStatus,
+  withPurchased,
 } from "./lib/tiers";
 
 // -----------------------------------------------------------------------------
@@ -80,15 +81,22 @@ export const myAccount = query({
     const convUsed = counter?.conversations ?? 0;
     const emailUsed = counter?.email ?? 0;
     const smsUsed = counter?.sms ?? 0;
+    // Prepaid packs bought this period lift the included allowances (no rollover).
+    const purchasedCreditCents = counter?.purchasedCreditCents ?? 0;
+    const emailCapEff = withPurchased(
+      limits.emailsPerMonth,
+      counter?.purchasedEmails ?? 0,
+    );
+    const smsCapEff = withPurchased(limits.smsPerMonth, counter?.purchasedSms ?? 0);
     // AI conversations → token-based credit balance (no hard cap; overage accrues
-    // past the included allowance). Emails/SMS keep their capped block overage.
+    // past the included + purchased allowance). Emails/SMS keep capped overage.
     const billableTokens =
       (counter?.aiInputTokens ?? 0) + (counter?.aiOutputTokens ?? 0);
-    const aiCredits = creditStatus(account.plan, billableTokens);
+    const aiCredits = creditStatus(account.plan, billableTokens, purchasedCreditCents);
     const overageCents =
       aiCredits.overageCents +
-      overageCostCents("emails", overageUnits(emailUsed, limits.emailsPerMonth)) +
-      overageCostCents("sms", overageUnits(smsUsed, limits.smsPerMonth));
+      overageCostCents("emails", overageUnits(emailUsed, emailCapEff)) +
+      overageCostCents("sms", overageUnits(smsUsed, smsCapEff));
 
     const cadence = account.billingCadence ?? "monthly";
     const founding = account.foundingPartner ?? false;
@@ -117,6 +125,9 @@ export const myAccount = query({
         }),
         commitmentEndsAt: account.commitmentEndsAt ?? null,
         aiCredits,
+        // Stripe subscription state for the billing UI (null before checkout).
+        subscriptionStatus: account.subscriptionStatus ?? null,
+        hasSubscription: !!account.stripeSubscriptionId,
       },
       locations: {
         included: includedLocations,
@@ -127,11 +138,10 @@ export const myAccount = query({
         // Retained as an activity metric; the credit balance (billing.aiCredits)
         // is now what governs AI usage.
         conversations: { used: convUsed, cap: limits.conversationsPerMonth },
-        emails: { used: emailUsed, cap: limits.emailsPerMonth },
-        sms: { used: smsUsed, cap: limits.smsPerMonth },
+        emails: { used: emailUsed, cap: emailCapEff },
+        sms: { used: smsUsed, cap: smsCapEff },
       },
-      // Estimated overage this period across the pooled allowances (metered
-      // once billing is active).
+      // Estimated overage this period across the pooled allowances.
       overageCents,
       features: {
         whiteLabel: limits.whiteLabel,
@@ -155,8 +165,9 @@ export const foundingSlotsLeft = query({
 });
 
 /** Change the plan on the account owning `slug` and re-sync its business's
- *  modules to the new tier's bundle (manager only; interim control until
- *  Stripe). Refuses a downgrade before an annual commitment ends. */
+ *  modules to the new tier's bundle (owner only). Customer plan changes go
+ *  through Stripe (checkout/portal); this stays as a platform/support fallback.
+ *  Refuses a downgrade before an annual commitment ends. */
 export const setPlan = mutation({
   args: { slug: v.string(), plan: planValidator },
   returns: v.null(),
@@ -199,7 +210,8 @@ export const setPlan = mutation({
 });
 
 /** Internal: grant Founding Partner status to an account, capped at the first
- *  FOUNDING_SLOTS accounts. Platform/manual until Stripe. */
+ *  FOUNDING_SLOTS accounts. Also applied automatically on checkout when the
+ *  founding coupon is used. */
 export const markFoundingPartner = internalMutation({
   args: { accountId: v.id("accounts") },
   returns: v.object({ granted: v.boolean(), slotsLeft: v.number() }),

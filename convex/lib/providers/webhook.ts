@@ -1,12 +1,18 @@
+import type { BookingCapability } from "./types";
+
 // -----------------------------------------------------------------------------
-// Booking provider adapters — how the AI reads availability and creates bookings
-// against a project's chosen system. Mirrors lib/calendarProviders.ts. The
-// generic `webhook` provider ships first: the tenant points us at two of their
-// own endpoints. Named providers (Calendly/Acuity/Square) plug in here later.
-//
-// Pure module (no Convex/Node imports): the fetch happens in integrationsNode.ts;
-// these functions only shape requests and parse responses, so they're testable.
+// Generic webhook booking provider (pure). The tenant points Omnivo at two of
+// their own endpoints; we shape the availability request and the booking payload
+// and parse the response. The actual fetch happens in integrationsNode.ts. This
+// is the first provider a self-serve tenant can configure alone (no Omnivo-held
+// secret). Named vendors (Square/Calendly/…) become sibling modules in Phase G.
 // -----------------------------------------------------------------------------
+
+/** A webhook provider can read availability and write a booking (no cancel). */
+export const WEBHOOK_BOOKING_CAPS: Set<BookingCapability> = new Set([
+  "read",
+  "write",
+]);
 
 export type ProviderSlot = { start: number; end?: number };
 

@@ -56,8 +56,8 @@ export default defineSchema({
     plan: planValidator,
     projectLimitOverride: v.optional(v.union(v.number(), v.null())),
     locationLimitOverride: v.optional(v.union(v.number(), v.null())),
-    // Extra locations bought beyond the plan's included count (manual until
-    // Stripe). Effective cap = plan's locationLimit + paidLocations.
+    // Extra locations bought beyond the plan's included count (a paid Stripe
+    // subscription add-on). Effective cap = plan's locationLimit + paidLocations.
     paidLocations: v.optional(v.number()),
     // "monthly" (cancel anytime) or "annual" (12-mo commitment, billed monthly,
     // 2 months free, no mid-term cancellation). Defaults to monthly.
@@ -70,7 +70,12 @@ export default defineSchema({
     foundingPartner: v.optional(v.boolean()),
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
-  }).index("by_owner", ["ownerUserId"]),
+    // Mirror of the Stripe subscription lifecycle for the billing UI:
+    // "active" | "trialing" | "past_due" | "canceled" (unset before checkout).
+    subscriptionStatus: v.optional(v.string()),
+  })
+    .index("by_owner", ["ownerUserId"])
+    .index("by_stripe_customer", ["stripeCustomerId"]),
 
   // A tenant / project. Every domain row points back here via `businessId`.
   businesses: defineTable({
@@ -92,23 +97,6 @@ export default defineSchema({
     // assistant anchors relative dates ("next Tuesday") to this; per-staff
     // availability can still override with its own timezone.
     timezone: v.optional(v.string()),
-    // Per-business SMS controls (the SMS Automation module still gates whether
-    // SMS can send at all + the cap; this tunes *which* events text and *when*).
-    // Absent = sensible defaults (see lib/smsSettings.ts): every event on, 24h
-    // reminder lead, no quiet hours. Quiet hours are local `timezone` hours
-    // [start, end); null = disabled. They suppress proactive texts (reminder,
-    // review, follow-up), never transactional confirmations.
-    smsSettings: v.optional(
-      v.object({
-        confirmationEnabled: v.boolean(),
-        reminderEnabled: v.boolean(),
-        reviewRequestEnabled: v.boolean(),
-        leadFollowupEnabled: v.boolean(),
-        reminderLeadHours: v.number(),
-        quietStart: v.union(v.number(), v.null()),
-        quietEnd: v.union(v.number(), v.null()),
-      }),
-    ),
     // Widget security: origin allow-list + hashed embed key (never stored raw).
     domains: v.array(v.string()),
     embedKeyHash: v.string(),
@@ -139,9 +127,6 @@ export default defineSchema({
       }),
     ),
     templateId: v.optional(v.string()),
-    // Public review destination (e.g. a Google review link). Where the Review
-    // Management module sends customers who rate their visit positively.
-    reviewLink: v.optional(v.string()),
   })
     .index("by_slug", ["slug"])
     .index("by_account", ["accountId"])
@@ -320,12 +305,6 @@ export default defineSchema({
     source: contactSourceValidator,
     notes: v.optional(v.string()),
     updatedAt: v.number(),
-    // Sales Assistant nurture state. `lastFollowupAt`/`followupCount` make the
-    // nurture cron idempotent + bounded; `qualified` flags a hot lead the owner
-    // was alerted about.
-    lastFollowupAt: v.optional(v.number()),
-    followupCount: v.optional(v.number()),
-    qualified: v.optional(v.boolean()),
   })
     .index("by_business", ["businessId"])
     .index("by_business_status", ["businessId", "status"]),
@@ -400,53 +379,35 @@ export default defineSchema({
     aiOutputTokens: v.optional(v.number()),
     aiCacheReadTokens: v.optional(v.number()),
     aiCostCents: v.optional(v.number()),
+    // Prepaid top-ups bought via Stripe packs this period (added to the plan's
+    // included allowance; no rollover). Credits are in cents ($1 = 100 credits).
+    purchasedCreditCents: v.optional(v.number()),
+    purchasedEmails: v.optional(v.number()),
+    purchasedSms: v.optional(v.number()),
   })
     .index("by_account_period", ["accountId", "period"])
     .index("by_business_period", ["businessId", "period"]),
 
+  // Stripe object ids created by the one-time bootstrap (`billing.bootstrapStripe`),
+  // so runtime never hard-codes them. Keyed by a logical name, e.g.
+  // "sub_premium_monthly", "pack_credits", "addon_location", "coupon_founding".
+  billingConfig: defineTable({
+    key: v.string(),
+    stripeId: v.string(),
+  }).index("by_key", ["key"]),
+
   // Per-project module entitlements — the source of truth for which add-on
   // capabilities the single AI Employee has. One row per business; each boolean
-  // gates a module (its tools + prompt fragments + workflows). Toggled from the
-  // dashboard/platform now; driven by Stripe later. The base assistant (chat,
-  // knowledge, basic lead capture) needs no entitlement.
+  // gates a module (its tools + prompt fragments + workflows). Synced from the
+  // account's plan on subscription changes (Stripe webhook → syncEntitlementsToPlan)
+  // and toggleable from the platform. The base assistant (chat, knowledge, basic
+  // lead capture) needs no entitlement.
   tenantFeatures: defineTable({
     businessId: v.id("businesses"),
     bookingEnabled: v.boolean(),
     leadQualificationEnabled: v.boolean(),
-    smsAutomationEnabled: v.boolean(),
-    reviewManagementEnabled: v.boolean(),
-    salesAssistantEnabled: v.boolean(),
     integrationsEnabled: v.boolean(),
   }).index("by_business", ["businessId"]),
-
-  // Review Management — a post-service reputation request per completed booking.
-  // The customer opens a public link (by `token`) and rates their visit:
-  // positive → sent to the business's public review page; negative → feedback
-  // captured privately + the owner notified. Powers the Reviews dashboard.
-  reviewRequests: defineTable({
-    businessId: v.id("businesses"),
-    bookingId: v.id("bookings"),
-    customerName: v.string(),
-    customerEmail: v.optional(v.string()),
-    customerPhone: v.optional(v.string()),
-    channel: v.union(v.literal("sms"), v.literal("email")),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("sent"),
-      v.literal("responded"),
-    ),
-    sentiment: v.optional(
-      v.union(v.literal("positive"), v.literal("negative")),
-    ),
-    rating: v.optional(v.number()), // 1–5 when given
-    feedback: v.optional(v.string()), // private feedback (negative path)
-    token: v.string(), // public response link id
-    sentAt: v.optional(v.number()),
-    respondedAt: v.optional(v.number()),
-  })
-    .index("by_business", ["businessId"])
-    .index("by_token", ["token"])
-    .index("by_booking", ["bookingId"]),
 
   // Per-business custom sending domain (Professional+), verified through Resend.
   // The tenant adds DNS records (SPF/DKIM) to authenticate their domain; once

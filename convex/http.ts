@@ -3,29 +3,27 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { auth } from "./auth";
 
-// Convex Auth's HTTP routes + the calendar OAuth callback + Twilio SMS status.
+// Convex Auth's HTTP routes + the calendar OAuth callback + Twilio SMS status
+// + the Stripe billing webhook.
 const http = httpRouter();
 auth.addHttpRoutes(http);
 
-// Twilio delivery-status callback (set as StatusCallback on each send). Twilio
-// POSTs form-encoded fields; we only need to surface failures in the logs and
-// acknowledge with 200 so Twilio doesn't retry.
+// Stripe webhook. Signature verification needs the RAW body, so we read it as
+// text and hand it (plus the signature header) to a Node action that verifies
+// and applies the event. Ack 2xx quickly; return 400 on a bad signature so
+// Stripe surfaces the failure instead of silently retrying forever.
 http.route({
-  path: "/twilio/status",
+  path: "/stripe/webhook",
   method: "POST",
-  handler: httpAction(async (_ctx, req) => {
-    try {
-      const form = new URLSearchParams(await req.text());
-      const status = form.get("MessageStatus");
-      if (status === "failed" || status === "undelivered") {
-        console.error(
-          `[sms] delivery ${status} sid=${form.get("MessageSid")} error=${form.get("ErrorCode")}`,
-        );
-      }
-    } catch {
-      // Malformed callback body — nothing actionable; still ack.
-    }
-    return new Response(null, { status: 200 });
+  handler: httpAction(async (ctx, req) => {
+    const signature = req.headers.get("stripe-signature");
+    if (!signature) return new Response("Missing signature", { status: 400 });
+    const body = await req.text();
+    const { ok } = await ctx.runAction(internal.billing.handleWebhook, {
+      body,
+      signature,
+    });
+    return new Response(null, { status: ok ? 200 : 400 });
   }),
 });
 

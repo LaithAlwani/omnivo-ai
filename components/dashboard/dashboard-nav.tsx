@@ -21,8 +21,6 @@ function navItems(slug: string) {
     { label: "Business", href: `/dashboard/${slug}/business`, exact: false },
     { label: "Bookings", href: `/dashboard/${slug}/bookings`, exact: false },
     { label: "Leads", href: `/dashboard/${slug}/leads`, exact: false },
-    { label: "Reviews", href: `/dashboard/${slug}/reviews`, exact: false },
-    { label: "Sales", href: `/dashboard/${slug}/sales`, exact: false },
     { label: "Integrations", href: `/dashboard/${slug}/integrations`, exact: false },
     { label: "Usage", href: `/dashboard/${slug}/usage`, exact: false },
   ];

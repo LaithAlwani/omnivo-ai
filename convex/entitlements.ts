@@ -13,15 +13,13 @@ import { entitlementsForPlan, type Plan } from "./lib/tiers";
 // -----------------------------------------------------------------------------
 // Entitlements — per-project module toggles. The single AI Employee gains skills
 // from whichever modules are enabled here. This is the source of truth for tool
-// gating (chat path) and workflow gating (crons); Stripe will drive it later.
+// gating (chat path) and workflow gating (crons). Synced from the account's plan
+// on Stripe subscription changes; also toggleable from the platform.
 // -----------------------------------------------------------------------------
 
 const moduleKeyValidator = v.union(
   v.literal("booking"),
   v.literal("leadQualification"),
-  v.literal("smsAutomation"),
-  v.literal("reviewManagement"),
-  v.literal("salesAssistant"),
   v.literal("integrations"),
 );
 
@@ -38,9 +36,6 @@ export async function entitlementsFor(
   return {
     bookingEnabled: row.bookingEnabled,
     leadQualificationEnabled: row.leadQualificationEnabled,
-    smsAutomationEnabled: row.smsAutomationEnabled,
-    reviewManagementEnabled: row.reviewManagementEnabled,
-    salesAssistantEnabled: row.salesAssistantEnabled,
     integrationsEnabled: row.integrationsEnabled,
   };
 }
@@ -98,8 +93,8 @@ export const get = query({
   },
 });
 
-/** Enable/disable a module for a project (manager only; interim manual control
- *  until Stripe drives entitlements). */
+/** Enable/disable a module for a project (manager only). A manual override on
+ *  top of the plan bundle synced from Stripe — used for platform/support tweaks. */
 export const setModule = mutation({
   args: { slug: v.string(), module: moduleKeyValidator, enabled: v.boolean() },
   returns: v.null(),
@@ -145,7 +140,6 @@ export const backfillFeatures = internalMutation({
         ...DEFAULT_ENTITLEMENTS,
         bookingEnabled: true,
         leadQualificationEnabled: true,
-        smsAutomationEnabled: true,
       });
       seeded++;
     }

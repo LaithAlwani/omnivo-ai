@@ -70,19 +70,16 @@ test("setPlan — upgrading flips modules on, downgrading turns them off", async
   const { as } = await ownerWithBusiness(t, "starter");
 
   let e = await as.query(api.entitlements.get, { slug: "co" });
-  expect(e.salesAssistantEnabled).toBe(false);
-  expect(e.integrationsEnabled).toBe(false);
+  expect(e.integrationsEnabled).toBe(false); // Starter has no Integrations
 
   await as.mutation(api.accounts.setPlan, { slug: "co", plan: "premium" });
   e = await as.query(api.entitlements.get, { slug: "co" });
-  expect(e.salesAssistantEnabled).toBe(true);
   expect(e.integrationsEnabled).toBe(true);
-  expect(e.smsAutomationEnabled).toBe(true);
+  expect(e.bookingEnabled).toBe(true);
 
   await as.mutation(api.accounts.setPlan, { slug: "co", plan: "starter" });
   e = await as.query(api.entitlements.get, { slug: "co" });
-  expect(e.salesAssistantEnabled).toBe(false);
-  expect(e.reviewManagementEnabled).toBe(false);
+  expect(e.integrationsEnabled).toBe(false); // turned off on downgrade
   expect(e.bookingEnabled).toBe(true); // still in Starter
 });
 
@@ -90,7 +87,7 @@ test("setPlan — upgrading flips modules on, downgrading turns them off", async
 test("paid locations raise the effective location cap", async () => {
   const t = convexTest(schema, modules);
   const { as } = await ownerWithBusiness(t, "starter");
-  // Grant 2 extra locations directly (manual until Stripe).
+  // Grant 2 extra locations directly (Stripe syncs paidLocations in production).
   await t.run(async (ctx) => {
     const account = await ctx.db.query("accounts").first();
     await ctx.db.patch(account!._id, { paidLocations: 2 });

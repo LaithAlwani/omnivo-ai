@@ -10,6 +10,8 @@ import {
   overageCostCents,
   creditStatus,
   creditTokens,
+  withPurchased,
+  TOKENS_PER_CREDIT,
   type MeteredUnit,
 } from "./lib/tiers";
 import { planForBusiness } from "./lib/accounts";
@@ -31,35 +33,44 @@ const meter = (used: number, cap: number | null, unit: MeteredUnit) => {
 // token-based credit economy (no hard cap); emails/SMS still have monthly caps.
 // -----------------------------------------------------------------------------
 
-/** Billable AI tokens (input+output) an account has used this period. */
-async function billableTokensThisPeriod(
+/** This period's billable AI tokens + prepaid credit top-ups for an account. */
+async function creditUsageThisPeriod(
   ctx: QueryCtx,
   accountId: Id<"accounts"> | undefined,
   period: string,
-): Promise<number> {
-  if (!accountId) return 0;
+): Promise<{ billableTokens: number; purchasedCreditCents: number }> {
+  if (!accountId) return { billableTokens: 0, purchasedCreditCents: 0 };
   const counter = await ctx.db
     .query("usageCounters")
     .withIndex("by_account_period", (q) =>
       q.eq("accountId", accountId).eq("period", period),
     )
     .unique();
-  return (counter?.aiInputTokens ?? 0) + (counter?.aiOutputTokens ?? 0);
+  return {
+    billableTokens:
+      (counter?.aiInputTokens ?? 0) + (counter?.aiOutputTokens ?? 0),
+    purchasedCreditCents: counter?.purchasedCreditCents ?? 0,
+  };
 }
 
 /** Runaway safety valve for the widget: only "blocked" when usage is far beyond
- *  the plan's included credit allowance (10×). Normal over-allowance usage flows
- *  and accrues overage — there is no hard credit cap. */
+ *  the account's credit allowance (10×, incl. any purchased packs). Normal
+ *  over-allowance usage flows and accrues overage — there is no hard credit cap. */
 export const creditSafetyStatus = internalQuery({
   args: { businessId: v.id("businesses"), period: v.string() },
   returns: v.object({ blocked: v.boolean() }),
   handler: async (ctx, { businessId, period }) => {
     const business = await ctx.db.get(businessId);
     const plan = await planForBusiness(ctx, businessId);
-    const allowance = creditTokens(plan);
-    if (allowance === null) return { blocked: false }; // enterprise/unlimited
-    const used = await billableTokensThisPeriod(ctx, business?.accountId, period);
-    return { blocked: used > allowance * 10 };
+    const included = creditTokens(plan);
+    if (included === null) return { blocked: false }; // enterprise/unlimited
+    const { billableTokens, purchasedCreditCents } = await creditUsageThisPeriod(
+      ctx,
+      business?.accountId,
+      period,
+    );
+    const allowance = included + purchasedCreditCents * TOKENS_PER_CREDIT;
+    return { blocked: billableTokens > allowance * 10 };
   },
 });
 
@@ -84,17 +95,26 @@ export const planUsage = query({
 
     const billableTokens =
       (counter?.aiInputTokens ?? 0) + (counter?.aiOutputTokens ?? 0);
+    const purchasedCreditCents = counter?.purchasedCreditCents ?? 0;
 
     return {
       tier: plan,
       period,
-      // AI conversations → a token-based credit balance.
+      // AI conversations → a token-based credit balance (incl. prepaid packs).
       aiCredits: {
-        ...creditStatus(plan, billableTokens),
+        ...creditStatus(plan, billableTokens, purchasedCreditCents),
         conversations: counter?.conversations ?? 0,
       },
-      emails: meter(counter?.email ?? 0, limits.emailsPerMonth, "emails"),
-      sms: meter(counter?.sms ?? 0, limits.smsPerMonth, "sms"),
+      emails: meter(
+        counter?.email ?? 0,
+        withPurchased(limits.emailsPerMonth, counter?.purchasedEmails ?? 0),
+        "emails",
+      ),
+      sms: meter(
+        counter?.sms ?? 0,
+        withPurchased(limits.smsPerMonth, counter?.purchasedSms ?? 0),
+        "sms",
+      ),
       features: {
         whiteLabel: limits.whiteLabel,
         customEmailDomain: limits.customEmailDomain,

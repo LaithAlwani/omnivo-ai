@@ -10,6 +10,7 @@ import { verifyKey } from "./public";
 import { enforceLimit } from "./rateLimiter";
 import { usagePeriod } from "./lib/tiers";
 import { capabilitiesFor, toolsFor, promptFragments } from "./modules/registry";
+import { lookupAvailable } from "./lib/providers";
 
 // -----------------------------------------------------------------------------
 // Public assistant chat — the ONE AI Employee orchestrator. Embed-key authed (no
@@ -46,10 +47,10 @@ export const chat = action({
     // Per-tenant guard on the expensive AI path before we touch the model.
     await enforceLimit(ctx, "widgetChat", businessId);
 
-    // No hard credit cap — usage past the plan's included AI credits keeps
-    // working and accrues overage (billed once Stripe lands). We only refuse in
-    // a runaway case (usage far beyond the allowance), as cheap insurance until
-    // billing exists. Degrade to a polite message so the widget stays graceful.
+    // No hard credit cap — usage past the plan's included AI credits (and any
+    // purchased packs) keeps working and accrues overage. We only refuse in a
+    // runaway case (usage far beyond the allowance), as a safety valve. Degrade
+    // to a polite message so the widget stays graceful.
     const isNewConversation =
       args.messages.filter((m) => m.role === "user").length <= 1;
     if (isNewConversation) {
@@ -84,14 +85,11 @@ export const chat = action({
       businessId,
     });
     const capabilities = capabilitiesFor(entitlements);
-    // The inbound-lookup skill depends on a configured integration, not a flag
-    // alone, so the orchestrator adds it here when one is active.
+    // Lookup is granted by a LIVE connection (an active inbound CRM), not a flag
+    // alone — the provider layer owns that check. (Phase B generalizes this to
+    // all capabilities.)
     if (entitlements.integrationsEnabled) {
-      const hasInbound = await ctx.runQuery(
-        internal.integrations.hasActiveInbound,
-        { businessId },
-      );
-      if (hasInbound) capabilities.add("lookup");
+      if (await lookupAvailable(ctx, businessId)) capabilities.add("lookup");
     }
     const tools = toolsFor(capabilities);
 

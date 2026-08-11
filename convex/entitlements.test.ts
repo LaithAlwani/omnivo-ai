@@ -41,13 +41,13 @@ test("capability assembly — booking tools appear only when a granting module i
   expect(booking).toContain("check_availability");
   expect(booking).toContain("book_appointment");
 
-  // Sales Assistant is self-contained: it grants booking without the add-on.
-  const sales = capabilitiesFor({
+  // Lead qualification grants the qualification capability.
+  const qual = capabilitiesFor({
     ...DEFAULT_ENTITLEMENTS,
-    salesAssistantEnabled: true,
+    leadQualificationEnabled: true,
   });
-  expect(sales.has("booking")).toBe(true);
-  expect(sales.has("qualification")).toBe(true);
+  expect(qual.has("qualification")).toBe(true);
+  expect(qual.has("booking")).toBe(false);
 });
 
 // New businesses are seeded with exactly their plan's module bundle.
@@ -55,14 +55,10 @@ test("provision seeds entitlements from the plan bundle", async () => {
   const t = convexTest(schema, modules);
   const { as } = await project(t); // Professional
   const e = await as.query(api.entitlements.get, { slug: "clip" });
-  // Professional bundles Booking + Lead Capture + Reviews + SMS.
+  // Professional bundles Booking + Lead Capture + Integrations.
   expect(e.bookingEnabled).toBe(true);
   expect(e.leadQualificationEnabled).toBe(true);
-  expect(e.reviewManagementEnabled).toBe(true);
-  expect(e.smsAutomationEnabled).toBe(true);
-  // Sales + Integrations are Premium-only.
-  expect(e.salesAssistantEnabled).toBe(false);
-  expect(e.integrationsEnabled).toBe(false);
+  expect(e.integrationsEnabled).toBe(true);
 });
 
 // The plan → module bundle mapping (pure).
@@ -70,14 +66,12 @@ test("entitlementsForPlan — bundles per tier", () => {
   const starter = entitlementsForPlan("starter");
   expect(starter.bookingEnabled).toBe(true);
   expect(starter.leadQualificationEnabled).toBe(true);
-  expect(starter.smsAutomationEnabled).toBe(true); // SMS now in every tier
-  expect(starter.reviewManagementEnabled).toBe(false);
-  expect(starter.salesAssistantEnabled).toBe(false);
+  expect(starter.integrationsEnabled).toBe(false); // Integrations is Pro+
 
   const premium = entitlementsForPlan("premium");
   expect(
     Object.values(premium).every((v) => v === true),
-  ).toBe(true); // all six modules
+  ).toBe(true); // all modules
 });
 
 // Toggling a module off removes the tool at execution time (defense in depth):

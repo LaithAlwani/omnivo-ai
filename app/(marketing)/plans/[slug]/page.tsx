@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ContactSection } from "@/components/sections/contact-section";
-import { plans } from "@/lib/site-config";
+import { plans, appHref } from "@/lib/site-config";
 
 // Per-slug SEO copy. Mirrors the pattern Phase 1 keeps when plans move to Convex.
 const PLAN_SEO: Record<string, { title: string; description: string }> = {
@@ -75,7 +75,10 @@ export default async function PlanPage({
               <span className="font-mono text-sm text-faint">{plan.cadence}</span>
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button href="/book" size="lg">
+              <Button
+                href={plan.slug === "enterprise" ? "/book" : appHref("/signin")}
+                size="lg"
+              >
                 {plan.cta}
               </Button>
               <Button href="/#tools" variant="ghost" size="lg">

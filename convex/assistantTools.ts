@@ -3,8 +3,14 @@ import { ConvexError } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { randomHex } from "./lib/keys";
 import { toolAllowed, type Capability } from "./modules/registry";
+import {
+  resolveBookingProvider,
+  getAvailability,
+  createBooking,
+  captureLead,
+  lookupCustomer,
+} from "./lib/providers";
 
 // -----------------------------------------------------------------------------
 // The assistant's booking/lead tool executor. The Node chat loop (publicChat.ts)
@@ -144,28 +150,17 @@ export const execute = internalAction({
         }
         const days = Math.max(1, Math.min(i.daysAhead ?? 14, 30));
 
-        // If a webhook booking provider is configured, read its availability;
-        // otherwise fall back to native slot generation.
-        const viaWebhook = await ctx.runAction(
-          internal.integrationsNode.webhookAvailability,
-          {
-            businessId: args.businessId,
-            fromMs: args.nowMs,
-            days,
-            serviceName: i.serviceName,
-            locationName: i.locationName,
-          },
-        );
-        const slots = viaWebhook.handled
-          ? viaWebhook.slots.map((start) => ({ start }))
-          : await ctx.runQuery(internal.slots.getSlotsForBusiness, {
-              businessId: args.businessId,
-              staffId,
-              fromMs: args.nowMs,
-              days,
-              serviceId,
-              locationId,
-            });
+        // Read availability through whichever provider is connected (native fallback).
+        const provider = await resolveBookingProvider(ctx, args.businessId);
+        const slots = await getAvailability(ctx, args.businessId, provider, {
+          fromMs: args.nowMs,
+          days,
+          serviceName: i.serviceName,
+          locationName: i.locationName,
+          serviceId,
+          staffId,
+          locationId,
+        });
         if (slots.length === 0) {
           return result(`No open times in the next ${days} days.`);
         }
@@ -196,44 +191,29 @@ export const execute = internalAction({
           return result(`I couldn't find a location called "${i.locationName}".`);
         }
 
-        // Route to a webhook booking provider when one is configured.
-        const viaWebhook = await ctx.runAction(
-          internal.integrationsNode.webhookCreateBooking,
-          {
-            businessId: args.businessId,
+        // Place the booking through whichever provider is connected (native fallback).
+        const provider = await resolveBookingProvider(ctx, args.businessId);
+        try {
+          const res = await createBooking(ctx, args.businessId, provider, {
             startMs: i.startMs,
             serviceName: i.serviceName,
             staffName: i.staffName,
             locationName: i.locationName,
-            customerName: i.customerName,
-            customerEmail: i.customerEmail,
-            customerPhone: i.customerPhone,
-          },
-        );
-        if (viaWebhook.handled) {
-          return viaWebhook.ok
-            ? result(
-                `Booked ✅ ${fmt(i.startMs)}. A confirmation will go to ${i.customerEmail}.`,
-              )
-            : result(
-                "I couldn't complete that booking in the scheduling system — please try another time.",
-              );
-        }
-
-        try {
-          const res = await ctx.runMutation(internal.bookings.createForBusiness, {
-            businessId: args.businessId,
-            staffId: st ? st._id : "any",
-            start: i.startMs,
             serviceId: svc?._id,
+            staffId: st?._id,
             locationId: loc?._id,
-            source: "assistant",
-            cancelToken: randomHex(16),
             customerName: i.customerName,
             customerEmail: i.customerEmail,
             customerPhone: i.customerPhone,
           });
-          const who = staff.find((s) => s._id === res.staffId)?.name ?? "our team";
+          if (!res.ok) {
+            return result(
+              "I couldn't complete that booking in the scheduling system — please try another time.",
+            );
+          }
+          const who =
+            (res.staffId && staff.find((s) => s._id === res.staffId)?.name) ||
+            "our team";
           return result(
             `Booked ✅ ${fmt(res.start)} with ${who}. A confirmation will go to ${i.customerEmail}.`,
           );
@@ -244,9 +224,7 @@ export const execute = internalAction({
 
       case "capture_lead": {
         if (!i.name) return result("I need at least a name to pass along.");
-        await ctx.runMutation(internal.leads.captureForBusiness, {
-          businessId: args.businessId,
-          source: "assistant",
+        await captureLead(ctx, args.businessId, {
           name: i.name,
           email: i.email,
           phone: i.phone,
@@ -259,10 +237,10 @@ export const execute = internalAction({
         if (!i.email && !i.phone) {
           return result("Give me an email or phone number to look them up.");
         }
-        const profile = await ctx.runAction(
-          internal.integrationsNode.lookupCustomer,
-          { businessId: args.businessId, email: i.email, phone: i.phone },
-        );
+        const profile = await lookupCustomer(ctx, args.businessId, {
+          email: i.email,
+          phone: i.phone,
+        });
         return result(
           profile
             ? `Customer record: ${profile}`

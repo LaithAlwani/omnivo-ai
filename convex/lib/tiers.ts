@@ -41,16 +41,13 @@ export interface TierLimits {
 const ALL_MODULES: ModuleKey[] = [
   "booking",
   "leadQualification",
-  "smsAutomation",
-  "reviewManagement",
-  "salesAssistant",
   "integrations",
 ];
 
 export const TIER_LIMITS: Record<Tier, TierLimits> = {
   starter: {
     priceMonthly: 299,
-    includedModules: ["booking", "leadQualification", "smsAutomation"],
+    includedModules: ["booking", "leadQualification"],
     conversationsPerMonth: null,
     emailsPerMonth: 2500,
     smsPerMonth: 100,
@@ -60,12 +57,7 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
   },
   professional: {
     priceMonthly: 449,
-    includedModules: [
-      "booking",
-      "leadQualification",
-      "reviewManagement",
-      "smsAutomation",
-    ],
+    includedModules: ["booking", "leadQualification", "integrations"],
     conversationsPerMonth: null,
     emailsPerMonth: 5000,
     smsPerMonth: 500,
@@ -272,11 +264,18 @@ export interface CreditStatus {
   overageCents: number;
 }
 
-/** An account's AI-credit position for the month, given billable tokens used. */
-export function creditStatus(plan: Plan, billableTokens: number): CreditStatus {
-  const grant = creditGrantCents(plan);
-  const allowance = creditTokens(plan);
-  if (grant === null || allowance === null) {
+/** An account's AI-credit position for the month, given billable tokens used and
+ *  any prepaid credit packs bought this period (in cents). Purchases extend both
+ *  the granted balance and the token allowance, so overage only accrues once the
+ *  included grant AND the top-ups are spent. */
+export function creditStatus(
+  plan: Plan,
+  billableTokens: number,
+  purchasedCreditCents = 0,
+): CreditStatus {
+  const included = creditGrantCents(plan);
+  if (included === null) {
+    // Enterprise / unlimited — top-ups are moot.
     return {
       grantedCents: null,
       usedCents: Math.round(creditCostCents(billableTokens)),
@@ -288,6 +287,8 @@ export function creditStatus(plan: Plan, billableTokens: number): CreditStatus {
       overageCents: 0,
     };
   }
+  const grant = included + purchasedCreditCents;
+  const allowance = grant * TOKENS_PER_CREDIT; // total token allowance incl. packs
   const overTokens = Math.max(0, billableTokens - allowance);
   const usedCents = Math.min(grant, Math.round(creditCostCents(billableTokens)));
   return {
@@ -343,6 +344,41 @@ export function overageCostCents(unit: MeteredUnit, units: number): number {
   if (units <= 0) return 0;
   const { per, cents } = OVERAGE_RATES[unit];
   return Math.ceil(units / per) * cents;
+}
+
+/** A monthly cap raised by prepaid bundles bought this period (null = unlimited). */
+export function withPurchased(cap: number | null, purchased: number): number | null {
+  return cap === null ? null : cap + purchased;
+}
+
+// --- Prepaid packs (one-time Stripe purchases) ------------------------------
+// One-time top-ups added to the CURRENT period's allowance (no rollover).
+
+export type PackKey = "credits" | "emails" | "sms";
+
+/** The Stripe charge, in cents, for a one-time pack. */
+export function packPriceCents(pack: PackKey): number {
+  switch (pack) {
+    case "credits":
+      return CREDIT_PACK_CENTS; // $10
+    case "emails":
+      return BUNDLE_RATES.emails.cents; // $5
+    case "sms":
+      return BUNDLE_RATES.sms.cents; // $10
+  }
+}
+
+/** What a pack adds to this period's allowance when its payment completes. */
+export function packGrant(pack: PackKey): {
+  creditCents: number;
+  emails: number;
+  sms: number;
+} {
+  return {
+    creditCents: pack === "credits" ? CREDIT_PACK_CENTS : 0,
+    emails: pack === "emails" ? BUNDLE_RATES.emails.units : 0,
+    sms: pack === "sms" ? BUNDLE_RATES.sms.units : 0,
+  };
 }
 
 /** UTC "YYYY-MM" usage period for a timestamp (the month a unit counts toward).

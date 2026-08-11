@@ -159,12 +159,8 @@ export const captureForBusiness = internalMutation({
       source: args.source,
       updatedAt: Date.now(),
     });
-    // Sales Assistant: flag + alert on promising leads as they land.
-    const entitlements = await entitlementsFor(ctx, args.businessId);
-    if (entitlements.salesAssistantEnabled) {
-      await ctx.scheduler.runAfter(0, internal.sales.onLeadCaptured, { leadId });
-    }
     // Integrations: push the new lead to any configured outbound CRM.
+    const entitlements = await entitlementsFor(ctx, args.businessId);
     if (entitlements.integrationsEnabled) {
       await ctx.scheduler.runAfter(0, internal.integrationsNode.dispatch, {
         businessId: args.businessId,

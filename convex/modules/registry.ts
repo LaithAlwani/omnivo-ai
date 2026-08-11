@@ -13,12 +13,13 @@ import type Anthropic from "@anthropic-ai/sdk";
 // dashboard alike. The Anthropic import is type-only (erased at build).
 // -----------------------------------------------------------------------------
 
+// Connector-era modules. `integrations` (connect the client's own booking/CRM)
+// is the spine; `booking`/`leadQualification` cover the Managed/native fallback
+// and lead capture. Reviews/Sales/SMS-automation were native-only and removed —
+// they'll return as provider adapters if a real install needs them.
 export const MODULE_KEYS = [
   "booking",
   "leadQualification",
-  "smsAutomation",
-  "reviewManagement",
-  "salesAssistant",
   "integrations",
 ] as const;
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -28,9 +29,6 @@ export type Entitlements = Record<`${ModuleKey}Enabled`, boolean>;
 export const DEFAULT_ENTITLEMENTS: Entitlements = {
   bookingEnabled: false,
   leadQualificationEnabled: false,
-  smsAutomationEnabled: false,
-  reviewManagementEnabled: false,
-  salesAssistantEnabled: false,
   integrationsEnabled: false,
 };
 
@@ -59,27 +57,6 @@ export const MODULE_CATALOG: ModuleInfo[] = [
     grants: "Qualification questions, intent detection, owner notifications.",
   },
   {
-    key: "smsAutomation",
-    name: "SMS Automation",
-    price: 49,
-    blurb: "Reminders, follow-ups, and review texts by SMS.",
-    grants: "SMS sending + a monthly SMS allowance from your plan.",
-  },
-  {
-    key: "reviewManagement",
-    name: "Review Management",
-    price: 29,
-    blurb: "Ask happy customers for reviews after their visit.",
-    grants: "Post-service reputation workflow + a metrics dashboard.",
-  },
-  {
-    key: "salesAssistant",
-    name: "Sales Assistant",
-    price: 49,
-    blurb: "A self-contained lead-conversion assistant.",
-    grants: "Qualify + capture + book + follow-up + hot-lead alerts.",
-  },
-  {
     key: "integrations",
     name: "Integrations",
     price: 49,
@@ -99,9 +76,8 @@ export type Capability = "booking" | "qualification" | "lookup";
  *  alone), so it isn't set here. */
 export function capabilitiesFor(e: Entitlements): Set<Capability> {
   const caps = new Set<Capability>();
-  if (e.bookingEnabled || e.salesAssistantEnabled) caps.add("booking");
-  if (e.leadQualificationEnabled || e.salesAssistantEnabled)
-    caps.add("qualification");
+  if (e.bookingEnabled) caps.add("booking");
+  if (e.leadQualificationEnabled) caps.add("qualification");
   return caps;
 }
 

@@ -205,70 +205,8 @@ export const sendBookingReminder = internalAction({
   handler: (ctx, { bookingId }) => notifyBooking(ctx, bookingId, "reminder"),
 });
 
-/** Public base for review-response links (the customer-facing apex host). */
-function reviewUrl(token: string): string {
-  const base = process.env.SITE_URL ?? "https://omnivoai.ca";
-  return `${base.replace(/\/$/, "")}/r/${token}`;
-}
-
-/** Email a completed-booking customer a review request (Review Management). */
-export const sendReviewRequest = internalAction({
-  args: { requestId: v.id("reviewRequests") },
-  returns: v.null(),
-  handler: async (ctx, { requestId }): Promise<null> => {
-    const info = await ctx.runQuery(internal.reviews.requestContext, {
-      requestId,
-    });
-    if (!info || info.alreadySent || !info.customerEmail) return null;
-
-    const url = reviewUrl(info.token);
-    const intro = `Hi ${info.customerName}, thanks for visiting ${info.businessName}! We'd love to hear how it went.`;
-    const sent = await deliverBusinessEmail(ctx, {
-      businessId: info.businessId,
-      to: info.customerEmail,
-      fromName: info.businessName,
-      subject: `How was your visit to ${info.businessName}?`,
-      text: `${intro}\n\nShare your feedback: ${url}\n\n${info.businessName}${info.whiteLabel ? "" : "\n\nPowered by Omnivo AI"}`,
-      html: emailShell(
-        `<h1 style="margin:16px 0 8px;font-size:22px;color:#ece4d8;">How did we do?</h1>
-         <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#b8ac9c;">${escapeHtml(intro)}</p>
-         <a href="${url}" style="display:inline-block;background:#ff5c1a;color:#160b04;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:9999px;font-size:14px;">Leave feedback</a>`,
-        { brand: info.businessName, poweredBy: !info.whiteLabel },
-      ),
-    });
-    if (!sent) return null;
-    await ctx.runMutation(internal.reviews.markSent, { requestId });
-    return null;
-  },
-});
-
-/** Email an open lead a nurture follow-up (Sales Assistant). */
-export const sendLeadFollowup = internalAction({
-  args: { leadId: v.id("leads") },
-  returns: v.null(),
-  handler: async (ctx, { leadId }): Promise<null> => {
-    const info = await ctx.runQuery(internal.sales.followupContext, { leadId });
-    if (!info || !info.email) return null;
-
-    const intro = `Hi ${info.name}, this is ${info.businessName} following up${info.message ? ` about "${info.message.slice(0, 80)}"` : ""}. We'd love to help — just reply and we'll take it from there.`;
-    await deliverBusinessEmail(ctx, {
-      businessId: info.businessId,
-      to: info.email,
-      fromName: info.businessName,
-      subject: `Still interested? — ${info.businessName}`,
-      text: `${intro}\n\n${info.businessName}`,
-      html: emailShell(
-        `<h1 style="margin:16px 0 8px;font-size:22px;color:#ece4d8;">Still interested?</h1>
-         <p style="margin:0 0 8px;font-size:15px;line-height:1.5;color:#b8ac9c;">${escapeHtml(intro)}</p>`,
-        { brand: info.businessName, poweredBy: !info.whiteLabel },
-      ),
-    });
-    return null;
-  },
-});
-
-/** Hydrate the booking, apply the gates, compose, send. Email isn't tier-gated
- *  (unlike SMS) — every customer with an email gets booking notices. */
+/** Hydrate the booking, apply the gates, compose, send. Every customer with an
+ *  email gets booking notices. */
 async function notifyBooking(
   ctx: ActionCtx,
   bookingId: Id<"bookings">,

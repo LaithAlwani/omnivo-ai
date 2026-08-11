@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { emailCap, smsCap, usagePeriod } from "./lib/tiers";
+import { emailCap, smsCap, usagePeriod, withPurchased } from "./lib/tiers";
 import { planForBusiness } from "./lib/accounts";
 
 // -----------------------------------------------------------------------------
@@ -56,9 +56,10 @@ async function capStatus(
   field: "sms" | "email",
 ): Promise<{ over: boolean; used: number; cap: number | null }> {
   const plan = await planForBusiness(ctx, businessId);
-  const cap = field === "sms" ? smsCap(plan) : emailCap(plan);
+  const planCap = field === "sms" ? smsCap(plan) : emailCap(plan);
   const accountId = await accountIdFor(ctx, businessId);
   let used = 0;
+  let purchased = 0;
   if (accountId) {
     const counter = await ctx.db
       .query("usageCounters")
@@ -67,7 +68,11 @@ async function capStatus(
       )
       .unique();
     used = counter?.[field] ?? 0;
+    purchased =
+      (field === "sms" ? counter?.purchasedSms : counter?.purchasedEmails) ?? 0;
   }
+  // Prepaid bundles bought this period lift the hard cap the senders enforce.
+  const cap = withPurchased(planCap, purchased);
   return { over: cap !== null && used >= cap, used, cap };
 }
 

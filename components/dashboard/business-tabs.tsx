@@ -13,7 +13,6 @@ const TABS = [
   { label: "Team", segment: "team" },
   { label: "Services", segment: "services" },
   { label: "Schedule", segment: "schedule" },
-  { label: "Messaging", segment: "messaging" },
   { label: "Knowledge", segment: "knowledge" },
   { label: "Playground", segment: "playground" },
 ] as const;

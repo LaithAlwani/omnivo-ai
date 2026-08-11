@@ -577,13 +577,6 @@ export const purgeBusinessData = internalMutation({
     if (budget > 0)
       await drain(
         await ctx.db
-          .query("reviewRequests")
-          .withIndex("by_business", (q) => q.eq("businessId", businessId))
-          .take(budget),
-      );
-    if (budget > 0)
-      await drain(
-        await ctx.db
           .query("usageCounters")
           .withIndex("by_business_period", (q) => q.eq("businessId", businessId))
           .take(budget),

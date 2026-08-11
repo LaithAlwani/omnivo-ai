@@ -2,7 +2,10 @@ import { cronJobs } from "convex/server";
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { resolveSmsSettings } from "./lib/smsSettings";
+
+// Fixed lead time for booking reminders (SMS + its per-business settings were
+// removed with the native messaging module; email reminders keep this default).
+const REMINDER_LEAD_HOURS = 24;
 
 // -----------------------------------------------------------------------------
 // Scheduled fan-out. Every job is kept small and orchestrated top-down —
@@ -39,10 +42,7 @@ export const remindBusiness = internalMutation({
   returns: v.null(),
   handler: async (ctx, { businessId }) => {
     const now = Date.now();
-    // The reminder lead time is per-business (default 24h).
-    const business = await ctx.db.get(businessId);
-    const settings = resolveSmsSettings(business?.smsSettings);
-    const windowMs = settings.reminderLeadHours * 60 * 60 * 1000;
+    const windowMs = REMINDER_LEAD_HOURS * 60 * 60 * 1000;
     const rows = await ctx.db
       .query("bookings")
       .withIndex("by_business_start", (q) =>
@@ -58,14 +58,10 @@ export const remindBusiness = internalMutation({
       if (bk.reminderSentAt) continue;
       // customerEmail is always present; this is just defensive.
       if (!bk.customerPhone && !bk.customerEmail) continue;
-      // Claim it in this transaction *before* scheduling the sends, so an
-      // overlapping tick can't double-notify. Fan out to both channels — each
-      // send action re-checks its own gates (SMS is tier + phone gated; email
-      // needs a present address + configured SMTP).
+      // Claim it in this transaction *before* scheduling the send, so an
+      // overlapping tick can't double-notify. Email re-checks its own gates
+      // (needs a present address + configured SMTP).
       await ctx.db.patch(bk._id, { reminderSentAt: now });
-      await ctx.scheduler.runAfter(0, internal.sms.sendBookingReminder, {
-        bookingId: bk._id,
-      });
       await ctx.scheduler.runAfter(0, internal.emailNode.sendBookingReminder, {
         bookingId: bk._id,
       });
@@ -110,15 +106,9 @@ export const refreshBusinessBusy = internalMutation({
 });
 
 const crons = cronJobs();
-// Reminders: every 30 min a booking that entered the 24h window gets one text.
+// Reminders: every 30 min a booking that entered the 24h window gets one email.
 crons.interval("send booking reminders", { minutes: 30 }, internal.crons.enqueueReminders, {});
 // Keep cached free/busy fresh so slot generation reflects external calendars.
 crons.interval("refresh calendar busy", { hours: 6 }, internal.crons.refreshAllBusy, {});
-// Review requests: hourly, ask each newly-completed booking's customer how it
-// went (Review Management module; idempotent per booking).
-crons.interval("send review requests", { hours: 1 }, internal.reviews.enqueueReviewRequests, {});
-// Sales nurture: every 6h, follow up with open leads that are due (Sales
-// Assistant module; bounded + idempotent per lead).
-crons.interval("nurture open leads", { hours: 6 }, internal.sales.enqueueFollowups, {});
 
 export default crons;

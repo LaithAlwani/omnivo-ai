@@ -272,13 +272,8 @@ async function bookCore(
 
   // Best-effort: write the appointment onto the staff's connected calendar.
   await ctx.scheduler.runAfter(0, internal.calendar.pushEvent, { bookingId });
-  // Best-effort: text the customer a confirmation (tier-gated + phone-gated
-  // inside the action, so it's a no-op when SMS isn't applicable).
-  await ctx.scheduler.runAfter(0, internal.sms.sendBookingConfirmation, {
-    bookingId,
-  });
-  // Every booking also gets an email confirmation (no tier gate) — the action
-  // self-gates on a present email + configured SMTP.
+  // Every booking gets an email confirmation — the action self-gates on a
+  // present email + configured SMTP.
   await ctx.scheduler.runAfter(0, internal.emailNode.sendBookingConfirmation, {
     bookingId,
   });

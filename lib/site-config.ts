@@ -304,8 +304,8 @@ export const overageRates = [
   },
 ] as const;
 
-// Prepaid bundles you can buy anytime — cheaper than running into overage
-// (goes live with billing). The AI-credit pack is shown as a credit quantity;
+// Prepaid bundles you can buy anytime (Stripe one-time packs) — cheaper than
+// running into overage. The AI-credit pack is shown as a credit quantity;
 // email/SMS add-ons keep their dollar pricing.
 export const bundles = [
   {

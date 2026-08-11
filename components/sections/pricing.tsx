@@ -12,6 +12,7 @@ import {
   additionalLocationPrice,
   overageRates,
   bundles,
+  appHref,
 } from "@/lib/site-config";
 
 function Check() {
@@ -193,7 +194,7 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
                     className={`p-3 text-center ${t.featured ? "rounded-b-xl bg-surface" : ""}`}
                   >
                     <Button
-                      href="/book"
+                      href={appHref("/signin")}
                       variant={t.featured ? "primary" : "ghost"}
                       size="md"
                       className="w-full"

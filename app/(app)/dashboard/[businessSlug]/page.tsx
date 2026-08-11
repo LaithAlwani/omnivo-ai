@@ -125,16 +125,6 @@ export default function OverviewPage() {
           href: "#install",
         },
       ];
-  // Once the basics are done, nudge review requests (if the plan doesn't include
-  // that module yet — it's bundled on Professional and up).
-  if (!loading && steps.every((s) => s.done) && !stats.reviewsEnabled) {
-    steps.push({
-      t: "Add review requests",
-      d: "Ask happy customers automatically (Professional+)",
-      done: false,
-      href: `/dashboard/${b.slug}/usage`,
-    });
-  }
   const allDone = steps.length > 0 && steps.every((s) => s.done);
 
   return (

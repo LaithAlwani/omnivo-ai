@@ -7,7 +7,7 @@ import {
   availabilityRequest,
   parseSlots,
   bookingPayload,
-} from "./lib/bookingProviders";
+} from "./lib/providers/webhook";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -19,7 +19,7 @@ async function project(t: TestConvex<typeof schema>) {
   const businessId = await as.mutation(internal.businesses.provision, {
     name: "Clip",
     slug: "clip",
-    tier: "professional",
+    tier: "starter", // Integrations is off on Starter — the module gate is testable
     embedKeyPrefix: "pp",
     embedKeyHash: "hh",
     embedKey: "ek_pp.x",

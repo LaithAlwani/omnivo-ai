@@ -12,7 +12,7 @@ import {
   parseSlots,
   bookingPayload,
   type WebhookBookingConfig,
-} from "./lib/bookingProviders";
+} from "./lib/providers/webhook";
 
 // -----------------------------------------------------------------------------
 // Integrations (Node runtime) — encryption, connection tests, outbound event
