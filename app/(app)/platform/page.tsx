@@ -184,6 +184,17 @@ export default function PlatformHome() {
       </div>
 
       <h2 className="mt-12 font-display text-2xl text-bone">
+        Connection health
+      </h2>
+      <p className="mt-1 text-sm text-muted">
+        Connections failing their health check. The assistant drops that tool and
+        hands off to a human until they recover.
+      </p>
+      <div className="mt-6 overflow-x-auto rounded-xl border border-line">
+        <ConnectionHealth />
+      </div>
+
+      <h2 className="mt-12 font-display text-2xl text-bone">
         AI cost &amp; margin
       </h2>
       <p className="mt-1 text-sm text-muted">
@@ -194,5 +205,52 @@ export default function PlatformHome() {
         <CostMargin />
       </div>
     </div>
+  );
+}
+
+function ConnectionHealth() {
+  const data = useQuery(api.platform.connectionHealth);
+  if (data === undefined) {
+    return <div className="p-6 text-sm text-faint">Loading…</div>;
+  }
+  if (data.length === 0) {
+    return <div className="p-6 text-sm text-faint">All connections healthy.</div>;
+  }
+  return (
+    <table className="w-full min-w-[36rem] text-sm">
+      <thead>
+        <tr className="border-b border-line">
+          <th className={th}>Business</th>
+          <th className={th}>Connection</th>
+          <th className={`${th} text-right`}>Fails</th>
+          <th className={th}>Last error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {data.map((c) => (
+          <tr
+            key={c._id}
+            className="border-b border-line/60 transition-colors last:border-0 hover:bg-surface/40"
+          >
+            <td className="px-4 py-3">
+              <Link
+                href={`/platform/${c.businessId}`}
+                className="font-medium text-bone transition-colors hover:text-ember"
+              >
+                {c.businessName}
+              </Link>
+              <div className="text-xs text-faint">/{c.slug}</div>
+            </td>
+            <td className="px-4 py-3 text-bone-dim">
+              {c.kind} · {c.provider}
+            </td>
+            <td className="px-4 py-3 text-right font-mono text-red-400">
+              {c.failureStreak}
+            </td>
+            <td className="px-4 py-3 text-xs text-faint">{c.lastError ?? "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

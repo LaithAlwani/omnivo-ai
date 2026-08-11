@@ -220,6 +220,21 @@ export const businessDetail = query({
       }),
     );
 
+    const integrationRows = await ctx.db
+      .query("integrations")
+      .withIndex("by_business", (q) => q.eq("businessId", businessId))
+      .collect();
+    const connections = integrationRows.map((r) => ({
+      _id: r._id,
+      kind: r.kind,
+      provider: r.provider,
+      active: r.active,
+      verified: r.verified,
+      health: r.health ?? "healthy",
+      failureStreak: r.failureStreak ?? 0,
+      lastCheckedAt: r.lastCheckedAt ?? null,
+    }));
+
     return {
       business: {
         _id: business._id,
@@ -241,6 +256,41 @@ export const businessDetail = query({
       upcoming,
       leads,
       members,
+      connections,
     };
+  },
+});
+
+/** Cross-tenant list of degraded connections — the operator's "what's broken
+ *  right now" view. Operators only. */
+export const connectionHealth = query({
+  args: {},
+  handler: async (ctx) => {
+    await requirePlatformAdmin(ctx);
+    const rows = await ctx.db.query("integrations").collect();
+    const degraded = rows.filter((r) => r.active && r.health === "degraded");
+    return await Promise.all(
+      degraded.map(async (r) => {
+        const b = await ctx.db.get(r.businessId);
+        const lastCheck = await ctx.db
+          .query("connectionChecks")
+          .withIndex("by_integration_ts", (q) =>
+            q.eq("integrationId", r._id),
+          )
+          .order("desc")
+          .first();
+        return {
+          _id: r._id,
+          businessId: r.businessId,
+          businessName: b?.name ?? "—",
+          slug: b?.slug ?? "",
+          kind: r.kind,
+          provider: r.provider,
+          failureStreak: r.failureStreak ?? 0,
+          lastCheckedAt: r.lastCheckedAt ?? null,
+          lastError: lastCheck?.error ?? null,
+        };
+      }),
+    );
   },
 });

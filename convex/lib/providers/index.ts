@@ -27,11 +27,19 @@ import type {
  *  wins; else the native Managed engine when the tenant has a natively bookable
  *  staff member; else null (no booking connection → booking tools drop out). */
 export function decideBookingProvider(input: {
-  integration: { provider: string; active: boolean; config: unknown } | null;
+  integration: {
+    provider: string;
+    active: boolean;
+    config: unknown;
+    health?: "healthy" | "degraded" | null;
+  } | null;
   nativeBookableStaff: number;
 }): BookingProviderDescriptor | null {
   const { integration, nativeBookableStaff } = input;
   if (integration?.active && integration.provider === "webhook") {
+    // A degraded connection drops booking entirely — never fall back to native,
+    // which isn't the tenant's system of record. The agent hands off instead.
+    if (integration.health === "degraded") return null;
     const cfg = (integration.config ?? {}) as {
       availabilityUrl?: string;
       bookingUrl?: string;
@@ -64,7 +72,12 @@ export async function resolveBookingProvider(
   const nativeBookableStaff = staff.filter((s) => !s.externalBookingUrl).length;
   return decideBookingProvider({
     integration: conn
-      ? { provider: conn.provider, active: conn.active, config: conn.config }
+      ? {
+          provider: conn.provider,
+          active: conn.active,
+          config: conn.config,
+          health: conn.health,
+        }
       : null,
     nativeBookableStaff,
   });

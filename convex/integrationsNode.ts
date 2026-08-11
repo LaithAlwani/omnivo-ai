@@ -118,6 +118,55 @@ export const test = action({
   },
 });
 
+// --- Health probe -----------------------------------------------------------
+
+/** Ping one connection and record its health (scheduled by the health cron).
+ *  Reachability only: any HTTP response < 500 = up; timeout/network/5xx = down.
+ *  On a healthy→degraded transition, alert the owner. */
+export const probeConnection = internalAction({
+  args: { integrationId: v.id("integrations") },
+  returns: v.null(),
+  handler: async (ctx, { integrationId }): Promise<null> => {
+    const target = await ctx.runQuery(internal.health.probeTarget, {
+      integrationId,
+    });
+    if (!target || !target.url) return null;
+    const secret = target.secretEnc ? decryptSecret(target.secretEnc) : null;
+
+    const started = Date.now();
+    let ok = false;
+    let error: string | undefined;
+    try {
+      const res = await fetchJson(target.url, { method: "GET", secret });
+      ok = res.status > 0 && res.status < 500;
+      if (!ok) error = `HTTP ${res.status}`;
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Request failed";
+    }
+    const latencyMs = Date.now() - started;
+
+    const result = await ctx.runMutation(internal.health.recordCheck, {
+      integrationId,
+      ok,
+      latencyMs,
+      error,
+    });
+    if (result.transitionedToDegraded && result.ownerEmail) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.emailNode.sendConnectionDegraded,
+        {
+          to: result.ownerEmail,
+          businessName: result.businessName ?? "your business",
+          kind: result.kind ?? "connection",
+          error: error ?? "unreachable",
+        },
+      );
+    }
+    return null;
+  },
+});
+
 // --- Outbound dispatch ------------------------------------------------------
 
 /** Push a domain event to each active outbound CRM target. Best-effort: a

@@ -111,6 +111,66 @@ test("read-only webhook → availability tool only, no write tool", async () => 
   expect(p.capabilities).not.toContain("booking");
 });
 
+/** Mark a business's integration of a given kind degraded (health cron effect). */
+async function degrade(
+  t: TestConvex<typeof schema>,
+  businessId: Id<"businesses">,
+  kind: "booking" | "crmInbound",
+) {
+  await t.run(async (ctx) => {
+    const row = await ctx.db
+      .query("integrations")
+      .withIndex("by_business_kind", (q) =>
+        q.eq("businessId", businessId).eq("kind", kind),
+      )
+      .first();
+    if (row) await ctx.db.patch(row._id, { health: "degraded", failureStreak: 3 });
+  });
+}
+
+// A degraded booking connection drops booking entirely (hand-off), never falls
+// back to native — the agent captures a lead instead.
+test("degraded booking webhook → booking tools dropped", async () => {
+  const t = convexTest(schema, modules);
+  const { as, businessId } = await tenant(t); // has a native bookable staff too
+
+  await as.action(api.integrationsNode.save, {
+    slug: "clip",
+    kind: "booking",
+    provider: "webhook",
+    config: {
+      availabilityUrl: "https://api.example.com/avail",
+      bookingUrl: "https://api.example.com/book",
+    },
+    active: true,
+  });
+  // Healthy first → booking present.
+  expect((await plan(t, businessId)).toolNames).toContain("book_appointment");
+
+  await degrade(t, businessId, "booking");
+  const p = await plan(t, businessId);
+  expect(p.toolNames).not.toContain("check_availability");
+  expect(p.toolNames).not.toContain("book_appointment"); // no native fallback
+  expect(p.bookingSystem).toBe(null);
+});
+
+// A degraded inbound CRM drops the lookup tool.
+test("degraded inbound CRM → lookup dropped", async () => {
+  const t = convexTest(schema, modules);
+  const { as, businessId } = await tenant(t);
+  await as.action(api.integrationsNode.save, {
+    slug: "clip",
+    kind: "crmInbound",
+    provider: "webhook",
+    config: { url: "https://api.example.com/lookup" },
+    active: true,
+  });
+  expect((await plan(t, businessId)).toolNames).toContain("lookup_customer");
+
+  await degrade(t, businessId, "crmInbound");
+  expect((await plan(t, businessId)).toolNames).not.toContain("lookup_customer");
+});
+
 // Lookup is granted only by a live inbound CRM connection.
 test("inbound CRM connection → lookup tool appears", async () => {
   const t = convexTest(schema, modules);

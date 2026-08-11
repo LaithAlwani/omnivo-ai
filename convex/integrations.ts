@@ -67,6 +67,7 @@ export const getConfig = internalQuery({
       config: v.any(),
       secretEnc: v.union(v.string(), v.null()),
       active: v.boolean(),
+      health: v.union(v.literal("healthy"), v.literal("degraded"), v.null()),
     }),
     v.null(),
   ),
@@ -84,6 +85,7 @@ export const getConfig = internalQuery({
       config: row.config,
       secretEnc: row.secretEnc ?? null,
       active: row.active,
+      health: row.health ?? null,
     };
   },
 });
@@ -129,7 +131,8 @@ export const hasActiveInbound = internalQuery({
         q.eq("businessId", businessId).eq("kind", "crmInbound"),
       )
       .first();
-    return !!row && row.active;
+    // A degraded inbound source can't answer lookups → treat as unavailable.
+    return !!row && row.active && row.health !== "degraded";
   },
 });
 

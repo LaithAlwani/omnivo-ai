@@ -463,9 +463,27 @@ export default defineSchema({
     active: v.boolean(),
     verified: v.boolean(),
     lastTestedAt: v.optional(v.number()),
+    // Automated connection health (health cron). "degraded" after N consecutive
+    // failed pings; the agent drops the connection's tools until it recovers.
+    health: v.optional(v.union(v.literal("healthy"), v.literal("degraded"))),
+    failureStreak: v.optional(v.number()),
+    lastCheckedAt: v.optional(v.number()),
   })
     .index("by_business", ["businessId"])
     .index("by_business_kind", ["businessId", "kind"]),
+
+  // Rolling log of connection health pings (one row per probe). Powers the
+  // platform health view + the degraded-after-N-failures decision.
+  connectionChecks: defineTable({
+    businessId: v.id("businesses"),
+    integrationId: v.id("integrations"),
+    ts: v.number(),
+    ok: v.boolean(),
+    latencyMs: v.number(),
+    error: v.optional(v.string()),
+  })
+    .index("by_integration_ts", ["integrationId", "ts"])
+    .index("by_business_ts", ["businessId", "ts"]),
 
   // Audit trail for platform-admin cross-tenant actions + sensitive business ops.
   auditLog: defineTable({

@@ -60,7 +60,7 @@ export default function PlatformBusinessDetail() {
     return <div className="text-sm text-faint">Loading…</div>;
   }
 
-  const { business, staff, upcoming, leads, members } = data;
+  const { business, staff, upcoming, leads, members, connections } = data;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -194,6 +194,38 @@ export default function PlatformBusinessDetail() {
                   <span className="text-bone-dim">{m.email}</span>
                   <span className="font-mono text-[0.6rem] uppercase tracking-wider text-faint">
                     {m.role}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        <Section title="Connections" count={connections.length}>
+          {connections.length === 0 ? (
+            <Empty label="No connections." />
+          ) : (
+            <ul className="divide-y divide-line/60">
+              {connections.map((c) => (
+                <li
+                  key={c._id}
+                  className="flex items-center justify-between px-3 py-2 text-sm"
+                >
+                  <span className="text-bone-dim">
+                    {c.kind} · {c.provider}
+                    {!c.active && (
+                      <span className="ml-2 text-xs text-faint">(inactive)</span>
+                    )}
+                  </span>
+                  <span
+                    className={`font-mono text-[0.6rem] uppercase tracking-wider ${
+                      c.health === "degraded" ? "text-red-400" : "text-emerald-400"
+                    }`}
+                  >
+                    {c.health}
+                    {c.health === "degraded" && c.failureStreak > 0
+                      ? ` ·${c.failureStreak}`
+                      : ""}
                   </span>
                 </li>
               ))}

@@ -110,5 +110,8 @@ const crons = cronJobs();
 crons.interval("send booking reminders", { minutes: 30 }, internal.crons.enqueueReminders, {});
 // Keep cached free/busy fresh so slot generation reflects external calendars.
 crons.interval("refresh calendar busy", { hours: 6 }, internal.crons.refreshAllBusy, {});
+// Connection health: probe each active booking / inbound-CRM connection; N
+// consecutive failures mark it degraded so the agent drops its tools + hands off.
+crons.interval("check connection health", { minutes: 15 }, internal.health.enqueueChecks, {});
 
 export default crons;

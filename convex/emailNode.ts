@@ -141,6 +141,42 @@ export const sendPasswordResetEmail = internalAction({
   },
 });
 
+// --- Connection health alert --------------------------------------------------
+
+/** Operational alert to the business owner when a connection goes degraded — a
+ *  plain system notice (not cap-gated / not from the tenant's domain). Phase C
+ *  retargets this to the installer. */
+export const sendConnectionDegraded = internalAction({
+  args: {
+    to: v.string(),
+    businessName: v.string(),
+    kind: v.string(),
+    error: v.string(),
+  },
+  returns: v.null(),
+  handler: async (_ctx, { to, businessName, kind, error }) => {
+    const label =
+      kind === "booking"
+        ? "booking"
+        : kind === "crmInbound"
+          ? "customer-lookup"
+          : kind;
+    const intro = `We couldn't reach the ${label} connection for ${businessName} after several attempts (${error}). Until it's back, your assistant will stop offering that and instead capture leads for your team to follow up.`;
+    const action = "Please check the endpoint URL and credentials in your Omnivo dashboard.";
+    await sendEmail({
+      to,
+      subject: `Action needed: your ${label} connection looks down`,
+      text: `${intro}\n\n${action}\n\nOmnivo AI`,
+      html: emailShell(
+        `<h1 style="margin:16px 0 8px;font-size:20px;color:#ece4d8;">A connection needs attention</h1>
+         <p style="margin:0 0 12px;font-size:14px;line-height:1.55;color:#b8ac9c;">${escapeHtml(intro)}</p>
+         <p style="margin:0;font-size:14px;line-height:1.55;color:#b8ac9c;">${escapeHtml(action)}</p>`,
+      ),
+    });
+    return null;
+  },
+});
+
 // --- Demo request (marketing "Book a demo" form) ------------------------------
 
 /** Where new demo requests are routed. Overridable per-deployment. */

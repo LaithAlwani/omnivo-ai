@@ -30,6 +30,7 @@ import type * as emailNode from "../emailNode.js";
 import type * as embedKeys from "../embedKeys.js";
 import type * as enrichNode from "../enrichNode.js";
 import type * as entitlements from "../entitlements.js";
+import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as integrations from "../integrations.js";
 import type * as integrationsNode from "../integrationsNode.js";
@@ -96,6 +97,7 @@ declare const fullApi: ApiFromModules<{
   embedKeys: typeof embedKeys;
   enrichNode: typeof enrichNode;
   entitlements: typeof entitlements;
+  health: typeof health;
   http: typeof http;
   integrations: typeof integrations;
   integrationsNode: typeof integrationsNode;
