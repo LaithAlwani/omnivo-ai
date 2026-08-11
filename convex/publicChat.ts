@@ -9,8 +9,7 @@ import { appError } from "./lib/errors";
 import { verifyKey } from "./public";
 import { enforceLimit } from "./rateLimiter";
 import { usagePeriod } from "./lib/tiers";
-import { capabilitiesFor, toolsFor, promptFragments } from "./modules/registry";
-import { lookupAvailable } from "./lib/providers";
+import { toolsFor, promptFragments, type Capability } from "./modules/registry";
 
 // -----------------------------------------------------------------------------
 // Public assistant chat — the ONE AI Employee orchestrator. Embed-key authed (no
@@ -79,24 +78,19 @@ export const chat = action({
     });
     if (!context) appError("NOT_FOUND", "That business doesn't exist.");
 
-    // The enabled modules decide the AI Employee's skills: assemble its tools and
-    // prompt fragments from the union of their capabilities.
-    const entitlements = await ctx.runQuery(internal.entitlements.forBusiness, {
+    // The agent's skills come from module permissions ∩ live connections — the
+    // single derivation lives in agentPlan.capabilityPlan.
+    const plan = await ctx.runAction(internal.agentPlan.capabilityPlan, {
       businessId,
     });
-    const capabilities = capabilitiesFor(entitlements);
-    // Lookup is granted by a LIVE connection (an active inbound CRM), not a flag
-    // alone — the provider layer owns that check. (Phase B generalizes this to
-    // all capabilities.)
-    if (entitlements.integrationsEnabled) {
-      if (await lookupAvailable(ctx, businessId)) capabilities.add("lookup");
-    }
+    const capabilities = new Set(plan.capabilities as Capability[]);
     const tools = toolsFor(capabilities);
 
     const nowIso = new Date().toISOString();
     const fragments = promptFragments(capabilities, {
       timezone: context.timezone,
       nowIso,
+      bookingSystem: plan.bookingSystem,
     });
 
     const client = new Anthropic({ apiKey });

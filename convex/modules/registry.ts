@@ -67,17 +67,34 @@ export const MODULE_CATALOG: ModuleInfo[] = [
 
 // --- Capabilities -----------------------------------------------------------
 
-export type Capability = "booking" | "qualification" | "lookup";
+// `availability` = read open times; `booking` = place a booking (write). A
+// read-only provider (e.g. a link-only calendar) grants `availability` but not
+// `booking`, so the agent offers times + a hand-off, never a write tool.
+export type Capability = "availability" | "booking" | "qualification" | "lookup";
 
-/** The union of capabilities the enabled modules grant. Self-contained modules
- *  (Sales Assistant) grant several without requiring the individual add-ons.
- *  The `lookup` capability is added by the orchestrator at runtime when the
- *  Integrations module has an active inbound source (not derivable from flags
- *  alone), so it isn't set here. */
-export function capabilitiesFor(e: Entitlements): Set<Capability> {
+/** Live-connection summary for a tenant: a module flag is *permission*, these
+ *  are the *grants*. Both are required for a capability. */
+export interface AgentConnections {
+  /** A booking provider that can read availability is connected. */
+  bookingRead: boolean;
+  /** A booking provider that can place bookings is connected. */
+  bookingWrite: boolean;
+  /** An inbound CRM the agent can look customers up in is connected. */
+  lookup: boolean;
+}
+
+/** The capabilities a tenant's agent actually has: the intersection of its
+ *  module permissions (flags) and its live connections (grants). */
+export function capabilitiesFor(
+  e: Entitlements,
+  conns: AgentConnections,
+): Set<Capability> {
   const caps = new Set<Capability>();
-  if (e.bookingEnabled) caps.add("booking");
+  if (e.bookingEnabled && conns.bookingRead) caps.add("availability");
+  if (e.bookingEnabled && conns.bookingWrite) caps.add("booking");
+  // Lead capture/qualification is native and always available with the flag.
   if (e.leadQualificationEnabled) caps.add("qualification");
+  if (e.integrationsEnabled && conns.lookup) caps.add("lookup");
   return caps;
 }
 
@@ -159,7 +176,7 @@ const LOOKUP_CUSTOMER: Anthropic.Tool = {
 export const TOOL_CAPABILITY: Record<string, Capability | null> = {
   list_services: null,
   capture_lead: null,
-  check_availability: "booking",
+  check_availability: "availability",
   book_appointment: "booking",
   lookup_customer: "lookup",
 };
@@ -167,7 +184,8 @@ export const TOOL_CAPABILITY: Record<string, Capability | null> = {
 /** The tools the model may use given the enabled capabilities. */
 export function toolsFor(caps: Set<Capability>): Anthropic.Tool[] {
   const tools: Anthropic.Tool[] = [LIST_SERVICES, CAPTURE_LEAD];
-  if (caps.has("booking")) tools.push(CHECK_AVAILABILITY, BOOK_APPOINTMENT);
+  if (caps.has("availability")) tools.push(CHECK_AVAILABILITY);
+  if (caps.has("booking")) tools.push(BOOK_APPOINTMENT);
   if (caps.has("lookup")) tools.push(LOOKUP_CUSTOMER);
   return tools;
 }
@@ -185,30 +203,50 @@ export function toolAllowed(name: string, caps: Set<Capability>): boolean {
 export interface PromptContext {
   timezone?: string | null;
   nowIso: string;
+  /** Where bookings land, so the assistant can say so honestly. */
+  bookingSystem?: "external" | "native" | null;
 }
 
 /** Instruction fragments appended to the base system prompt, one per active
  *  capability, so the model knows how to use the tools it's been given. */
 export function promptFragments(
   caps: Set<Capability>,
-  { timezone, nowIso }: PromptContext,
+  { timezone, nowIso, bookingSystem }: PromptContext,
 ): string[] {
   const fragments: string[] = [];
 
+  const tzLine = timezone
+    ? `The business timezone is ${timezone}; read dates like "next Tuesday" in that zone.`
+    : "Interpret times in UTC.";
+  const wherePlaced =
+    bookingSystem === "external"
+      ? "Bookings are placed directly in the business's own scheduling system."
+      : "Bookings are placed in the business's Omnivo calendar.";
+
   if (caps.has("booking")) {
+    // Full booking: read availability + place the booking.
     fragments.push(
       [
         "You can take bookings using your tools.",
-        timezone
-          ? `The business timezone is ${timezone}; read dates like "next Tuesday" in that zone.`
-          : "Interpret times in UTC.",
+        wherePlaced,
+        tzLine,
         `The current time is ${nowIso}.`,
         "To book: call check_availability, offer the visitor the returned times, then call book_appointment with the exact startMs they pick plus their name and email. Only ever book a startMs that check_availability returned.",
         "If the business has more than one location, ask which they'd prefer and pass locationName so you offer times at the right site.",
       ].join(" "),
     );
+  } else if (caps.has("availability")) {
+    // Read-only provider: show times, then hand off — you can't place the booking.
+    fragments.push(
+      [
+        "You can show open appointment times with check_availability, but you cannot place the booking yourself.",
+        tzLine,
+        `The current time is ${nowIso}.`,
+        "Offer the returned times, then capture the visitor's name and contact with capture_lead (or share the business's booking link if given) so the team confirms it. Never claim you've booked anything.",
+      ].join(" "),
+    );
   } else {
-    // No booking capability — don't imply the assistant can schedule.
+    // No booking capability at all — don't imply the assistant can schedule.
     fragments.push(
       "You cannot book appointments directly. If a visitor wants to book, capture their details with capture_lead so the team can arrange it.",
     );

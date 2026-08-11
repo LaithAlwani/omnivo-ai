@@ -9,6 +9,7 @@
  */
 
 import type * as accounts from "../accounts.js";
+import type * as agentPlan from "../agentPlan.js";
 import type * as analytics from "../analytics.js";
 import type * as assistant from "../assistant.js";
 import type * as assistantContext from "../assistantContext.js";
@@ -74,6 +75,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   accounts: typeof accounts;
+  agentPlan: typeof agentPlan;
   analytics: typeof analytics;
   assistant: typeof assistant;
   assistantContext: typeof assistantContext;

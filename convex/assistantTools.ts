@@ -150,8 +150,12 @@ export const execute = internalAction({
         }
         const days = Math.max(1, Math.min(i.daysAhead ?? 14, 30));
 
-        // Read availability through whichever provider is connected (native fallback).
+        // Read availability through the connected provider (defensive: the tool
+        // isn't offered unless one resolves).
         const provider = await resolveBookingProvider(ctx, args.businessId);
+        if (!provider) {
+          return result("I can't check live availability right now.");
+        }
         const slots = await getAvailability(ctx, args.businessId, provider, {
           fromMs: args.nowMs,
           days,
@@ -191,8 +195,20 @@ export const execute = internalAction({
           return result(`I couldn't find a location called "${i.locationName}".`);
         }
 
-        // Place the booking through whichever provider is connected (native fallback).
+        // Place the booking through the connected provider.
         const provider = await resolveBookingProvider(ctx, args.businessId);
+        if (!provider || !provider.caps.has("write")) {
+          // No writable booking provider — hand off to the team instead.
+          await captureLead(ctx, args.businessId, {
+            name: i.customerName,
+            email: i.customerEmail,
+            phone: i.customerPhone,
+            message: `Wants to book ${fmt(i.startMs)}${i.serviceName ? ` for ${i.serviceName}` : ""}.`,
+          });
+          return result(
+            "I can't place the booking myself, but I've passed your details and preferred time to the team — they'll confirm shortly.",
+          );
+        }
         try {
           const res = await createBooking(ctx, args.businessId, provider, {
             startMs: i.startMs,

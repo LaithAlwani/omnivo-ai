@@ -3,9 +3,9 @@ import type { ActionCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { randomHex } from "../keys";
 import { NATIVE_BOOKING_CAPS } from "./native";
-import { WEBHOOK_BOOKING_CAPS } from "./webhook";
 import type {
   AvailabilityQuery,
+  BookingCapability,
   BookingInput,
   BookingProviderDescriptor,
   BookingResult,
@@ -22,20 +22,52 @@ import type {
 // native, preserving today's behaviour (Phase B tightens this).
 // -----------------------------------------------------------------------------
 
-/** Which booking provider is active for a tenant: a connected webhook, else the
- *  native Managed engine. */
+/** Pure decision: which booking provider (if any) is CONNECTED for a tenant —
+ *  a webhook with usable endpoints (read = availabilityUrl, write = bookingUrl)
+ *  wins; else the native Managed engine when the tenant has a natively bookable
+ *  staff member; else null (no booking connection → booking tools drop out). */
+export function decideBookingProvider(input: {
+  integration: { provider: string; active: boolean; config: unknown } | null;
+  nativeBookableStaff: number;
+}): BookingProviderDescriptor | null {
+  const { integration, nativeBookableStaff } = input;
+  if (integration?.active && integration.provider === "webhook") {
+    const cfg = (integration.config ?? {}) as {
+      availabilityUrl?: string;
+      bookingUrl?: string;
+    };
+    const caps = new Set<BookingCapability>();
+    if (cfg.availabilityUrl) caps.add("read");
+    if (cfg.bookingUrl) caps.add("write");
+    if (caps.size > 0) return { id: "webhook", caps };
+    // Connected but no usable endpoints → treat as not connected.
+  }
+  if (nativeBookableStaff > 0) {
+    return { id: "native", caps: new Set(NATIVE_BOOKING_CAPS) };
+  }
+  return null;
+}
+
+/** Resolve the connected booking provider for a tenant (null = none). */
 export async function resolveBookingProvider(
   ctx: ActionCtx,
   businessId: Id<"businesses">,
-): Promise<BookingProviderDescriptor> {
+): Promise<BookingProviderDescriptor | null> {
   const conn = await ctx.runQuery(internal.integrations.getConfig, {
     businessId,
     kind: "booking",
   });
-  if (conn?.active && conn.provider === "webhook") {
-    return { id: "webhook", caps: WEBHOOK_BOOKING_CAPS };
-  }
-  return { id: "native", caps: NATIVE_BOOKING_CAPS };
+  const staff = await ctx.runQuery(internal.staff.listBookableForBusiness, {
+    businessId,
+  });
+  // Link-only staff (their own booking URL) can't take a native slot booking.
+  const nativeBookableStaff = staff.filter((s) => !s.externalBookingUrl).length;
+  return decideBookingProvider({
+    integration: conn
+      ? { provider: conn.provider, active: conn.active, config: conn.config }
+      : null,
+    nativeBookableStaff,
+  });
 }
 
 /** Read open times through the resolved provider (falls back to native when a
@@ -75,6 +107,10 @@ export async function createBooking(
   provider: BookingProviderDescriptor,
   input: BookingInput,
 ): Promise<BookingResult> {
+  // A read-only provider never falls back to booking natively behind the user.
+  if (!provider.caps.has("write")) {
+    return { ok: false, reason: "read-only" };
+  }
   if (provider.id === "webhook") {
     const via = await ctx.runAction(
       internal.integrationsNode.webhookCreateBooking,

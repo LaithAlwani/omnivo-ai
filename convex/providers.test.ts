@@ -60,7 +60,7 @@ test("webhook booking provider handles availability + booking; native untouched"
     businessId,
     timezone: "UTC",
     nowMs: Date.now(),
-    capabilities: ["booking"],
+    capabilities: ["availability", "booking"],
     name: "check_availability",
     input: {},
   });
@@ -71,7 +71,7 @@ test("webhook booking provider handles availability + booking; native untouched"
     businessId,
     timezone: "UTC",
     nowMs: Date.now(),
-    capabilities: ["booking"],
+    capabilities: ["availability", "booking"],
     name: "book_appointment",
     input: { startMs: soon, customerName: "Ada", customerEmail: "ada@x.com" },
   });
@@ -105,7 +105,7 @@ test("native fallback: no provider → native engine, no webhook IO", async () =
     businessId,
     timezone: "UTC",
     nowMs: Date.now(),
-    capabilities: ["booking"],
+    capabilities: ["availability", "booking"],
     name: "book_appointment",
     input: { startMs: soon, customerName: "Ada", customerEmail: "ada@x.com" },
   });

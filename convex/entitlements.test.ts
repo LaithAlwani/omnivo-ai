@@ -28,24 +28,49 @@ async function project(t: ReturnType<typeof convexTest>) {
   return { t, as, businessId };
 }
 
-// The registry assembles the model's tools from the union of enabled modules.
-test("capability assembly — booking tools appear only when a granting module is on", () => {
+// Tools = module permission ∩ live connection. A flag alone is not enough.
+const NO_CONNS = { bookingRead: false, bookingWrite: false, lookup: false };
+const FULL_BOOKING = { bookingRead: true, bookingWrite: true, lookup: false };
+
+test("capability assembly — booking needs BOTH the flag and a connection", () => {
   // Nothing enabled → only the core tools (list_services, capture_lead).
-  const none = toolsFor(capabilitiesFor(DEFAULT_ENTITLEMENTS)).map((t) => t.name);
+  const none = toolsFor(
+    capabilitiesFor(DEFAULT_ENTITLEMENTS, NO_CONNS),
+  ).map((t) => t.name);
   expect(none.sort()).toEqual(["capture_lead", "list_services"]);
 
-  // Booking module → adds the availability + booking tools.
+  // Booking flag on but NO connection → still no booking tools.
+  const flagOnly = toolsFor(
+    capabilitiesFor({ ...DEFAULT_ENTITLEMENTS, bookingEnabled: true }, NO_CONNS),
+  ).map((t) => t.name);
+  expect(flagOnly).not.toContain("check_availability");
+  expect(flagOnly).not.toContain("book_appointment");
+
+  // Flag on AND a full booking connection → both booking tools appear.
   const booking = toolsFor(
-    capabilitiesFor({ ...DEFAULT_ENTITLEMENTS, bookingEnabled: true }),
+    capabilitiesFor(
+      { ...DEFAULT_ENTITLEMENTS, bookingEnabled: true },
+      FULL_BOOKING,
+    ),
   ).map((t) => t.name);
   expect(booking).toContain("check_availability");
   expect(booking).toContain("book_appointment");
 
-  // Lead qualification grants the qualification capability.
-  const qual = capabilitiesFor({
-    ...DEFAULT_ENTITLEMENTS,
-    leadQualificationEnabled: true,
-  });
+  // Read-only connection → availability only, never the write tool.
+  const readOnly = toolsFor(
+    capabilitiesFor(
+      { ...DEFAULT_ENTITLEMENTS, bookingEnabled: true },
+      { bookingRead: true, bookingWrite: false, lookup: false },
+    ),
+  ).map((t) => t.name);
+  expect(readOnly).toContain("check_availability");
+  expect(readOnly).not.toContain("book_appointment");
+
+  // Lead qualification is flag-only (native), no connection needed.
+  const qual = capabilitiesFor(
+    { ...DEFAULT_ENTITLEMENTS, leadQualificationEnabled: true },
+    NO_CONNS,
+  );
   expect(qual.has("qualification")).toBe(true);
   expect(qual.has("booking")).toBe(false);
 });
