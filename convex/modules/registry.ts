@@ -204,13 +204,16 @@ export interface PromptContext {
   /** Whether a connected scheduler is available (bookings land in the client's
    *  own system). Null when there's no booking connection. */
   bookingSystem?: "external" | null;
+  /** A hand-off booking link (e.g. a Calendly page) to share when the assistant
+   *  can't place the booking itself. Null when none is connected. */
+  bookingLink?: string | null;
 }
 
 /** Instruction fragments appended to the base system prompt, one per active
  *  capability, so the model knows how to use the tools it's been given. */
 export function promptFragments(
   caps: Set<Capability>,
-  { timezone, nowIso }: PromptContext,
+  { timezone, nowIso, bookingLink }: PromptContext,
 ): string[] {
   const fragments: string[] = [];
 
@@ -219,6 +222,11 @@ export function promptFragments(
     : "Interpret times in UTC.";
   const wherePlaced =
     "Bookings are placed directly in the business's own scheduling system.";
+  // When the assistant can't place the booking, point the visitor at the
+  // tenant's own scheduling page (a "link" provider), if they connected one.
+  const linkLine = bookingLink
+    ? ` To book, share this scheduling link with the visitor: ${bookingLink}`
+    : "";
 
   if (caps.has("booking")) {
     // Full booking: read availability + place the booking.
@@ -239,13 +247,15 @@ export function promptFragments(
         "You can show open appointment times with check_availability, but you cannot place the booking yourself.",
         tzLine,
         `The current time is ${nowIso}.`,
-        "Offer the returned times, then capture the visitor's name and contact with capture_lead (or share the business's booking link if given) so the team confirms it. Never claim you've booked anything.",
+        "Offer the returned times, then capture the visitor's name and contact with capture_lead so the team confirms it. Never claim you've booked anything." +
+          linkLine,
       ].join(" "),
     );
   } else {
     // No booking capability at all — don't imply the assistant can schedule.
     fragments.push(
-      "You cannot book appointments directly. If a visitor wants to book, capture their details with capture_lead so the team can arrange it.",
+      "You cannot book appointments directly. If a visitor wants to book, capture their details with capture_lead so the team can arrange it." +
+        linkLine,
     );
   }
 

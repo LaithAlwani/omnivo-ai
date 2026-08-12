@@ -13,6 +13,16 @@ import {
   bookingPayload,
   type WebhookBookingConfig,
 } from "./lib/providers/webhook";
+import {
+  CALCOM_API,
+  CALCOM_VERSION_SLOTS,
+  CALCOM_VERSION_BOOKINGS,
+  calcomSlotsUrl,
+  parseCalcomSlots,
+  calcomBookingBody,
+  calcomBookingOk,
+  type CalcomBookingConfig,
+} from "./lib/providers/calcom";
 
 // -----------------------------------------------------------------------------
 // Integrations (Node runtime) — encryption, connection tests, outbound event
@@ -237,11 +247,12 @@ export const lookupCustomer = internalAction({
   },
 });
 
-// --- Webhook booking provider ----------------------------------------------
+// --- Booking providers (webhook + named adapters) --------------------------
 
-/** Read availability from a webhook booking provider (empty when unconfigured
- *  or the provider isn't a webhook — the caller then falls back to native). */
-export const webhookAvailability = internalAction({
+/** Read availability through the tenant's connected booking provider. Returns
+ *  handled=false when there's no usable provider (the caller then hands off). A
+ *  new vendor is a new `provider` branch — the fetch/secret plumbing is shared. */
+export const providerAvailability = internalAction({
   args: {
     businessId: v.id("businesses"),
     fromMs: v.number(),
@@ -258,34 +269,52 @@ export const webhookAvailability = internalAction({
       businessId: args.businessId,
       kind: "booking",
     });
-    if (!conn || !conn.active || conn.provider !== "webhook") {
-      return { handled: false as const };
-    }
-    const config = conn.config as WebhookBookingConfig;
-    const url = availabilityRequest(config, {
-      fromMs: args.fromMs,
-      days: args.days,
-      serviceName: args.serviceName,
-      locationName: args.locationName,
-    });
-    if (!url) return { handled: false as const };
+    if (!conn || !conn.active) return { handled: false as const };
     const secret = conn.secretEnc ? decryptSecret(conn.secretEnc) : null;
-    try {
-      const { ok, json } = await fetchJson(url, { method: "GET", secret });
-      if (!ok) return { handled: true as const, slots: [] };
-      return {
-        handled: true as const,
-        slots: parseSlots(json).map((s) => s.start),
-      };
-    } catch {
-      return { handled: true as const, slots: [] };
+
+    if (conn.provider === "webhook") {
+      const url = availabilityRequest(conn.config as WebhookBookingConfig, {
+        fromMs: args.fromMs,
+        days: args.days,
+        serviceName: args.serviceName,
+        locationName: args.locationName,
+      });
+      if (!url) return { handled: false as const };
+      try {
+        const { ok, json } = await fetchJson(url, { method: "GET", secret });
+        if (!ok) return { handled: true as const, slots: [] };
+        return { handled: true as const, slots: parseSlots(json).map((s) => s.start) };
+      } catch {
+        return { handled: true as const, slots: [] };
+      }
     }
+
+    if (conn.provider === "calcom") {
+      const url = calcomSlotsUrl(conn.config as CalcomBookingConfig, {
+        fromMs: args.fromMs,
+        days: args.days,
+      });
+      if (!url) return { handled: false as const };
+      try {
+        const { ok, json } = await fetchJson(url, {
+          method: "GET",
+          secret,
+          headers: { "cal-api-version": CALCOM_VERSION_SLOTS },
+        });
+        if (!ok) return { handled: true as const, slots: [] };
+        return { handled: true as const, slots: parseCalcomSlots(json) };
+      } catch {
+        return { handled: true as const, slots: [] };
+      }
+    }
+
+    return { handled: false as const };
   },
 });
 
-/** Create a booking through a webhook booking provider. Returns handled=false
- *  when there's no active webhook provider (caller books natively). */
-export const webhookCreateBooking = internalAction({
+/** Place a booking through the tenant's connected booking provider. Returns
+ *  handled=false when there's no write-capable provider (caller hands off). */
+export const providerCreateBooking = internalAction({
   args: {
     businessId: v.id("businesses"),
     startMs: v.number(),
@@ -305,22 +334,48 @@ export const webhookCreateBooking = internalAction({
       businessId: args.businessId,
       kind: "booking",
     });
-    if (!conn || !conn.active || conn.provider !== "webhook") {
-      return { handled: false as const };
-    }
-    const config = conn.config as WebhookBookingConfig;
-    if (!config.bookingUrl) return { handled: false as const };
+    if (!conn || !conn.active) return { handled: false as const };
     const secret = conn.secretEnc ? decryptSecret(conn.secretEnc) : null;
-    const body = JSON.stringify(bookingPayload(args));
-    try {
-      const { ok } = await fetchJson(config.bookingUrl, {
-        method: "POST",
-        body,
-        secret,
-      });
-      return { handled: true as const, ok };
-    } catch {
-      return { handled: true as const, ok: false };
+
+    if (conn.provider === "webhook") {
+      const config = conn.config as WebhookBookingConfig;
+      if (!config.bookingUrl) return { handled: false as const };
+      const body = JSON.stringify(bookingPayload(args));
+      try {
+        const { ok } = await fetchJson(config.bookingUrl, {
+          method: "POST",
+          body,
+          secret,
+        });
+        return { handled: true as const, ok };
+      } catch {
+        return { handled: true as const, ok: false };
+      }
     }
+
+    if (conn.provider === "calcom") {
+      const payload = calcomBookingBody(
+        {
+          startMs: args.startMs,
+          customerName: args.customerName,
+          customerEmail: args.customerEmail,
+        },
+        conn.config as CalcomBookingConfig,
+      );
+      if (!payload) return { handled: false as const };
+      try {
+        const { status, json } = await fetchJson(`${CALCOM_API}/bookings`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+          secret,
+          headers: { "cal-api-version": CALCOM_VERSION_BOOKINGS },
+        });
+        return { handled: true as const, ok: calcomBookingOk(status, json) };
+      } catch {
+        return { handled: true as const, ok: false };
+      }
+    }
+
+    return { handled: false as const };
   },
 });

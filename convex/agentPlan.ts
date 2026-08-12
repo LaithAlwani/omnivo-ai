@@ -6,7 +6,11 @@ import {
   toolsFor,
   type AgentConnections,
 } from "./modules/registry";
-import { resolveBookingProvider, lookupAvailable } from "./lib/providers";
+import {
+  resolveBookingProvider,
+  lookupAvailable,
+  bookingLinkFor,
+} from "./lib/providers";
 
 // -----------------------------------------------------------------------------
 // The ONE place the agent's capability set is derived. A module flag is
@@ -21,6 +25,9 @@ export const capabilityPlan = internalAction({
     capabilities: v.array(v.string()),
     toolNames: v.array(v.string()),
     bookingSystem: v.union(v.literal("external"), v.null()),
+    // A hand-off booking link (a "link" provider) the agent shares when it
+    // can't place the booking itself. Null when none is connected.
+    bookingLink: v.union(v.string(), v.null()),
   }),
   handler: async (ctx, { businessId }) => {
     const entitlements = await ctx.runQuery(internal.entitlements.forBusiness, {
@@ -43,10 +50,15 @@ export const capabilityPlan = internalAction({
     const canBook = caps.has("availability") || caps.has("booking");
     const bookingSystem = canBook && provider ? ("external" as const) : null;
 
+    // A hand-off booking link (Calendly/Acuity page, etc.) the agent shares
+    // when it can't place the booking itself.
+    const bookingLink = await bookingLinkFor(ctx, businessId);
+
     return {
       capabilities: Array.from(caps),
       toolNames: tools.map((t) => t.name),
       bookingSystem,
+      bookingLink,
     };
   },
 });

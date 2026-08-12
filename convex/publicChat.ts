@@ -91,6 +91,7 @@ export const chat = action({
       timezone: context.timezone,
       nowIso,
       bookingSystem: plan.bookingSystem,
+      bookingLink: plan.bookingLink,
     });
 
     const client = new Anthropic({ apiKey });

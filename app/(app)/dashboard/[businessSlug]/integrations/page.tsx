@@ -112,6 +112,8 @@ function StatusPill({ conn }: { conn: Conn }) {
   );
 }
 
+type BookingProvider = "calcom" | "link" | "webhook";
+
 function BookingCard({
   slug,
   canEdit,
@@ -125,7 +127,15 @@ function BookingCard({
   const cfg = (current?.config ?? {}) as {
     availabilityUrl?: string;
     bookingUrl?: string;
+    eventTypeId?: number | string;
+    schedulingLink?: string;
   };
+  const cur = current?.provider as BookingProvider | undefined;
+  const [provider, setProvider] = useState<BookingProvider>(
+    cur === "webhook" || cur === "link" || cur === "calcom" ? cur : "calcom",
+  );
+  const [eventTypeId, setEventTypeId] = useState(String(cfg.eventTypeId ?? ""));
+  const [schedulingLink, setLink] = useState(cfg.schedulingLink ?? "");
   const [availabilityUrl, setA] = useState(cfg.availabilityUrl ?? "");
   const [bookingUrl, setBk] = useState(cfg.bookingUrl ?? "");
   const [secret, setSecret] = useState("");
@@ -144,6 +154,22 @@ function BookingCard({
     }
   }
 
+  function onSave() {
+    const config =
+      provider === "calcom"
+        ? { eventTypeId: eventTypeId.trim() ? Number(eventTypeId.trim()) : undefined }
+        : provider === "link"
+          ? { schedulingLink: schedulingLink.trim() }
+          : { availabilityUrl, bookingUrl };
+    return act(() =>
+      save({ slug, kind: "booking", provider, config, secret: secret || undefined }),
+    );
+  }
+
+  const keyPlaceholder = current?.hasSecret
+    ? "API key (leave blank to keep)"
+    : "API key";
+
   return (
     <section className="rounded-xl border border-line bg-surface/40 p-6">
       <div className="flex items-center gap-2">
@@ -151,63 +177,96 @@ function BookingCard({
         <StatusPill conn={current} />
       </div>
       <p className="mt-1 text-sm text-muted">
-        Point the assistant at your own scheduler. Without one connected, the
-        assistant captures the lead and hands off instead of booking.
+        Let the assistant book into your own scheduler. Without one connected, it
+        captures the lead and hands off instead of booking.
       </p>
+
       <fieldset disabled={!canEdit || busy} className="mt-4 space-y-2">
-        <input
+        <select
+          value={provider}
+          onChange={(e) => setProvider(e.target.value as BookingProvider)}
           className={inputCls}
-          value={availabilityUrl}
-          onChange={(e) => setA(e.target.value)}
-          placeholder="Availability URL (GET open times)"
-        />
-        <input
-          className={inputCls}
-          value={bookingUrl}
-          onChange={(e) => setBk(e.target.value)}
-          placeholder="Booking URL (POST to create)"
-        />
-        <input
-          className={inputCls}
-          value={secret}
-          onChange={(e) => setSecret(e.target.value)}
-          type="password"
-          placeholder={
-            current?.hasSecret ? "API key (leave blank to keep)" : "API key (optional)"
-          }
-        />
+        >
+          <option value="calcom">Cal.com — assistant books in chat</option>
+          <option value="link">Booking link — assistant hands off (Calendly, Acuity…)</option>
+          <option value="webhook">Custom webhook</option>
+        </select>
+
+        {provider === "calcom" && (
+          <>
+            <input
+              className={inputCls}
+              value={eventTypeId}
+              onChange={(e) => setEventTypeId(e.target.value)}
+              placeholder="Cal.com event type ID (e.g. 123456)"
+            />
+            <input
+              className={inputCls}
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              type="password"
+              placeholder={keyPlaceholder}
+            />
+          </>
+        )}
+
+        {provider === "link" && (
+          <input
+            className={inputCls}
+            value={schedulingLink}
+            onChange={(e) => setLink(e.target.value)}
+            placeholder="Your booking page URL (e.g. https://calendly.com/you)"
+          />
+        )}
+
+        {provider === "webhook" && (
+          <>
+            <input
+              className={inputCls}
+              value={availabilityUrl}
+              onChange={(e) => setA(e.target.value)}
+              placeholder="Availability URL (GET open times)"
+            />
+            <input
+              className={inputCls}
+              value={bookingUrl}
+              onChange={(e) => setBk(e.target.value)}
+              placeholder="Booking URL (POST to create)"
+            />
+            <input
+              className={inputCls}
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              type="password"
+              placeholder={`${keyPlaceholder} (optional)`}
+            />
+          </>
+        )}
       </fieldset>
+
       {canEdit && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
-            onClick={() =>
-              act(() =>
-                save({
-                  slug,
-                  kind: "booking",
-                  provider: "webhook",
-                  config: { availabilityUrl, bookingUrl },
-                  secret: secret || undefined,
-                }),
-              )
-            }
+            onClick={onSave}
             className="h-9 rounded-full bg-ember px-4 text-sm font-medium text-[#160b04] transition-colors hover:bg-flare"
           >
             Save
           </button>
           {current && (
             <>
-              <button
-                onClick={() =>
-                  act(async () => {
-                    const r = await test({ slug, integrationId: current._id });
-                    setMsg(r.detail);
-                  })
-                }
-                className="h-9 rounded-full border border-line-strong px-4 text-sm text-bone-dim transition-colors hover:border-ember/60 hover:text-bone"
-              >
-                Test
-              </button>
+              {current.provider === "webhook" && (
+                <button
+                  onClick={() =>
+                    act(async () => {
+                      const r = await test({ slug, integrationId: current._id });
+                      setMsg(r.detail);
+                    })
+                  }
+                  className="h-9 rounded-full border border-line-strong px-4 text-sm text-bone-dim transition-colors hover:border-ember/60 hover:text-bone"
+                >
+                  Test
+                </button>
+              )}
               <button
                 onClick={() =>
                   act(() => remove({ slug, integrationId: current._id }))

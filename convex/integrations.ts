@@ -37,6 +37,8 @@ export const kindValidator = v.union(
 );
 export const providerValidator = v.union(
   v.literal("webhook"),
+  v.literal("link"),
+  v.literal("calcom"),
   v.literal("calendly"),
   v.literal("acuity"),
   v.literal("square"),

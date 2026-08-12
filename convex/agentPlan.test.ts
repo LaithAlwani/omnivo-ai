@@ -64,6 +64,51 @@ test("full webhook connection → external booking tools", async () => {
   expect(p.bookingSystem).toBe("external");
 });
 
+// A named adapter (Cal.com) is a full provider — booking tools appear from a
+// key + event-type id, no code change beyond the adapter itself.
+test("cal.com connection → full booking tools (external)", async () => {
+  const t = convexTest(schema, modules);
+  const { businessId } = await tenant(t);
+  await t.run((ctx) =>
+    ctx.db.insert("integrations", {
+      businessId,
+      kind: "booking" as const,
+      provider: "calcom" as const,
+      config: { eventTypeId: 123 },
+      secretEnc: "enc",
+      active: true,
+      verified: false,
+    }),
+  );
+
+  const p = await plan(t, businessId);
+  expect(p.toolNames).toContain("check_availability");
+  expect(p.toolNames).toContain("book_appointment");
+  expect(p.bookingSystem).toBe("external");
+});
+
+// A "link" provider isn't tool-capable — no booking tools, but the scheduling
+// link is surfaced so the agent hands it off.
+test("booking link → hand-off link surfaced, no booking tools", async () => {
+  const t = convexTest(schema, modules);
+  const { businessId } = await tenant(t);
+  await t.run((ctx) =>
+    ctx.db.insert("integrations", {
+      businessId,
+      kind: "booking" as const,
+      provider: "link" as const,
+      config: { schedulingLink: "https://calendly.com/acme" },
+      active: true,
+      verified: false,
+    }),
+  );
+
+  const p = await plan(t, businessId);
+  expect(p.toolNames).not.toContain("book_appointment");
+  expect(p.toolNames).not.toContain("check_availability");
+  expect(p.bookingLink).toBe("https://calendly.com/acme");
+});
+
 // A read-only provider (availability endpoint only) exposes check_availability
 // but NEVER the write tool.
 test("read-only webhook → availability tool only, no write tool", async () => {

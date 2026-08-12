@@ -40,6 +40,7 @@ import type * as lib_errors from "../lib/errors.js";
 import type * as lib_keys from "../lib/keys.js";
 import type * as lib_leoPrompt from "../lib/leoPrompt.js";
 import type * as lib_modelPricing from "../lib/modelPricing.js";
+import type * as lib_providers_calcom from "../lib/providers/calcom.js";
 import type * as lib_providers_index from "../lib/providers/index.js";
 import type * as lib_providers_types from "../lib/providers/types.js";
 import type * as lib_providers_webhook from "../lib/providers/webhook.js";
@@ -97,6 +98,7 @@ declare const fullApi: ApiFromModules<{
   "lib/keys": typeof lib_keys;
   "lib/leoPrompt": typeof lib_leoPrompt;
   "lib/modelPricing": typeof lib_modelPricing;
+  "lib/providers/calcom": typeof lib_providers_calcom;
   "lib/providers/index": typeof lib_providers_index;
   "lib/providers/types": typeof lib_providers_types;
   "lib/providers/webhook": typeof lib_providers_webhook;
