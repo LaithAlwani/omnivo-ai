@@ -365,4 +365,14 @@ export default defineSchema({
   })
     .index("by_business_ts", ["businessId", "ts"])
     .index("by_actor_ts", ["actorUserId", "ts"]),
+
+  // Ephemeral per-turn buffer for streaming the assistant's reply to the widget.
+  // The chat action appends text deltas here as they arrive from the model; the
+  // widget subscribes by `key` (a random per-turn id) and renders the growing
+  // text. Deleted shortly after the turn completes.
+  chatStreams: defineTable({
+    key: v.string(),
+    text: v.string(),
+    done: v.boolean(),
+  }).index("by_key", ["key"]),
 });

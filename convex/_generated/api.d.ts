@@ -18,6 +18,7 @@ import type * as auth from "../auth.js";
 import type * as billing from "../billing.js";
 import type * as billingSync from "../billingSync.js";
 import type * as businesses from "../businesses.js";
+import type * as chatStream from "../chatStream.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as demoRequests from "../demoRequests.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   billing: typeof billing;
   billingSync: typeof billingSync;
   businesses: typeof businesses;
+  chatStream: typeof chatStream;
   conversations: typeof conversations;
   crons: typeof crons;
   demoRequests: typeof demoRequests;

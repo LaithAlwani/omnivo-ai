@@ -24,6 +24,7 @@
 
   // Launcher button.
   var launcher = document.createElement("button");
+  launcher.id = "omnivo-ai-launcher";
   launcher.setAttribute("aria-label", "Open chat");
   launcher.style.cssText =
     "position:fixed;bottom:20px;" + side +
@@ -44,6 +45,7 @@
 
   // Chat iframe (hidden until opened).
   var frame = document.createElement("iframe");
+  frame.id = "omnivo-ai-frame";
   frame.title = "Chat";
   frame.src =
     appOrigin + "/embed/" + encodeURIComponent(key) +
@@ -58,6 +60,9 @@
   function setOpen(next) {
     open = next;
     frame.style.display = open ? "block" : "none";
+    // On mobile the iframe goes full-screen (see the injected style), so the
+    // launcher is hidden while open — the widget's own × button closes it.
+    launcher.classList.toggle("omnivo-open", open);
     launcher.setAttribute("aria-label", open ? "Close chat" : "Open chat");
     launcher.style.transform = "scale(1)";
   }
@@ -72,7 +77,17 @@
     if (e.data && e.data.type === "ai-engine:close") setOpen(false);
   });
 
+  // On phones the panel takes the whole screen (a fixed-size card is cramped).
+  var style = document.createElement("style");
+  style.textContent =
+    "@media (max-width:640px){" +
+    "#omnivo-ai-frame{inset:0 !important;width:100% !important;height:100dvh !important;" +
+    "max-width:100% !important;border-radius:0 !important;box-shadow:none !important;}" +
+    "#omnivo-ai-launcher.omnivo-open{display:none !important;}" +
+    "}";
+
   function mount() {
+    document.head.appendChild(style);
     document.body.appendChild(frame);
     document.body.appendChild(launcher);
   }

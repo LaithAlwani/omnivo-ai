@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api } from "@/convex/_generated/api";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -17,6 +19,58 @@ type Config = {
   chatIcon: string | null;
   whiteLabel: boolean;
 };
+
+// Rotating status lines while the model is working (before the first token).
+const THINKING = [
+  "Thinking…",
+  "Looking that up…",
+  "One moment…",
+  "Putting that together…",
+];
+
+/** Render assistant text as Markdown, styled for the light widget so headings,
+ *  lists, code, links, and emphasis read cleanly (no raw ** or - symbols). */
+function Markdown({ children }: { children: string }) {
+  return (
+    <div className="text-sm leading-relaxed [&>:first-child]:mt-0 [&>:last-child]:mb-0 [&_a]:underline [&_blockquote]:my-1.5 [&_blockquote]:border-l-2 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_blockquote]:text-gray-500 [&_code]:rounded [&_code]:bg-black/5 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em] [&_h1]:my-1.5 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:my-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:my-1.5 [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_pre]:my-1.5 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-gray-900 [&_pre]:p-2.5 [&_pre]:text-gray-100 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_strong]:font-semibold [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+/** Animated "thinking" indicator with a rotating status line. */
+function Thinking() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setI((n) => (n + 1) % THINKING.length), 1800);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="flex items-center gap-2 text-gray-400">
+      <span className="flex gap-1">
+        {[0, 1, 2].map((d) => (
+          <span
+            key={d}
+            className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400"
+            style={{ animationDelay: `${d * 0.15}s` }}
+          />
+        ))}
+      </span>
+      <span className="text-xs">{THINKING[i]}</span>
+    </div>
+  );
+}
 
 export default function EmbedWidget() {
   const params = useParams<{ embedKey: string }>();
@@ -39,7 +93,12 @@ export default function EmbedWidget() {
   const [failed, setFailed] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
+  // The in-flight turn's stream key (null when idle). Drives the live bubble.
+  const [streamKey, setStreamKey] = useState<string | null>(null);
+  const stream = useQuery(
+    api.chatStream.streamText,
+    streamKey ? { key: streamKey } : "skip",
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Load branding once, then seed the welcome message.
@@ -60,20 +119,25 @@ export default function EmbedWidget() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages, sending]);
+  }, [messages, streamKey, stream?.text]);
 
   async function send() {
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text || streamKey) return;
     const next = [...messages, { role: "user" as const, content: text }];
     setMessages(next);
     setDraft("");
-    setSending(true);
+    const key =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    setStreamKey(key);
     try {
       const { reply } = await chat({
         embedKey,
         origin,
         conversationId,
+        streamKey: key,
         messages: next.map((m) => ({ role: m.role, content: m.content })),
       });
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
@@ -86,7 +150,7 @@ export default function EmbedWidget() {
         },
       ]);
     } finally {
-      setSending(false);
+      setStreamKey(null);
     }
   }
 
@@ -114,9 +178,27 @@ export default function EmbedWidget() {
         className="flex items-center justify-between px-4 py-3"
         style={{ backgroundColor: brand, color: ink }}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <span aria-hidden className="text-lg leading-none">
-            {config?.chatIcon ?? "💬"}
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-black/15"
+            aria-hidden
+          >
+            {config?.chatIcon ? (
+              <span className="text-base leading-none">{config.chatIcon}</span>
+            ) : (
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+              >
+                <path
+                  d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold leading-tight">
@@ -151,24 +233,26 @@ export default function EmbedWidget() {
             key={i}
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            <div
-              className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
-                m.role === "user" ? "" : "bg-gray-100 text-gray-800"
-              }`}
-              style={
-                m.role === "user"
-                  ? { backgroundColor: brand, color: ink }
-                  : undefined
-              }
-            >
-              {m.content}
-            </div>
+            {m.role === "user" ? (
+              <div
+                className="max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed"
+                style={{ backgroundColor: brand, color: ink }}
+              >
+                {m.content}
+              </div>
+            ) : (
+              <div className="max-w-[85%] rounded-2xl bg-gray-100 px-3.5 py-2 text-gray-800">
+                <Markdown>{m.content}</Markdown>
+              </div>
+            )}
           </div>
         ))}
-        {sending && (
+        {/* Live streaming bubble: the thinking indicator until the first token,
+            then the assistant's reply as it streams in. */}
+        {streamKey && (
           <div className="flex justify-start">
-            <div className="rounded-2xl bg-gray-100 px-3.5 py-2 text-sm text-gray-400">
-              …
+            <div className="max-w-[85%] rounded-2xl bg-gray-100 px-3.5 py-2 text-gray-800">
+              {stream?.text ? <Markdown>{stream.text}</Markdown> : <Thinking />}
             </div>
           </div>
         )}
@@ -194,7 +278,7 @@ export default function EmbedWidget() {
           />
           <button
             onClick={send}
-            disabled={sending || !draft.trim() || config === null}
+            disabled={streamKey !== null || !draft.trim() || config === null}
             aria-label="Send"
             className="grid h-10 w-10 shrink-0 place-items-center rounded-full transition-opacity disabled:opacity-40"
             style={{ backgroundColor: brand, color: ink }}

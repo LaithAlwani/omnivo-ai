@@ -30,6 +30,9 @@ export const chat = action({
     embedKey: v.string(),
     origin: v.optional(v.string()),
     conversationId: v.optional(v.string()),
+    // Random per-turn id: when set, the reply streams into `chatStreams` so the
+    // widget can render it token-by-token via the reactive `streamText` query.
+    streamKey: v.optional(v.string()),
     messages: v.array(messageValidator),
   },
   returns: v.object({ reply: v.string() }),
@@ -125,14 +128,62 @@ export const chat = action({
       cacheWriteTokens += u.cache_creation_input_tokens ?? 0;
     };
 
-    let response = await client.messages.create({
-      model,
-      max_tokens: 1024,
-      system,
-      tools,
-      messages,
-    });
-    addUsage(response.usage);
+    // Streaming: when a streamKey is given, run each turn as a token stream and
+    // flush the accumulated text into `chatStreams` (throttled) so the widget's
+    // reactive `streamText` query renders it as it arrives.
+    const streamKey = args.streamKey;
+    let streamed = "";
+    let lastFlush = 0;
+    if (streamKey) {
+      await ctx.runMutation(internal.chatStream.putStream, {
+        key: streamKey,
+        text: "",
+        done: false,
+      });
+    }
+
+    const runTurn = async (): Promise<Anthropic.Message> => {
+      if (!streamKey) {
+        const m = await client.messages.create({
+          model,
+          max_tokens: 1024,
+          system,
+          tools,
+          messages,
+        });
+        addUsage(m.usage);
+        return m;
+      }
+      const stream = client.messages.stream({
+        model,
+        max_tokens: 1024,
+        system,
+        tools,
+        messages,
+      });
+      for await (const event of stream) {
+        if (
+          event.type === "content_block_delta" &&
+          event.delta.type === "text_delta"
+        ) {
+          streamed += event.delta.text;
+          const now = Date.now();
+          if (now - lastFlush > 120) {
+            lastFlush = now;
+            await ctx.runMutation(internal.chatStream.putStream, {
+              key: streamKey,
+              text: streamed,
+              done: false,
+            });
+          }
+        }
+      }
+      const m = await stream.finalMessage();
+      addUsage(m.usage);
+      return m;
+    };
+
+    let response = await runTurn();
 
     // Tool loop — bounded so a misbehaving model can't spin forever.
     let guard = 0;
@@ -156,14 +207,7 @@ export const chat = action({
         });
       }
       messages.push({ role: "user", content: toolResults });
-      response = await client.messages.create({
-        model,
-        max_tokens: 1024,
-        system,
-        tools,
-        messages,
-      });
-      addUsage(response.usage);
+      response = await runTurn();
     }
 
     // Meter this turn's tokens onto the conversation + the account (drives AI
@@ -178,11 +222,26 @@ export const chat = action({
       cacheWriteTokens,
     });
 
-    const text = response.content
+    const lastText = response.content
       .map((block) => (block.type === "text" ? block.text : ""))
       .join("")
       .trim();
+    const reply =
+      (streamKey ? streamed : lastText).trim() ||
+      "Sorry, I didn't catch that — could you rephrase?";
 
-    return { reply: text || "Sorry, I didn't catch that — could you rephrase?" };
+    if (streamKey) {
+      // Finalize the buffer with the complete text, then clear it shortly after.
+      await ctx.runMutation(internal.chatStream.putStream, {
+        key: streamKey,
+        text: reply,
+        done: true,
+      });
+      await ctx.scheduler.runAfter(60_000, internal.chatStream.clearStream, {
+        key: streamKey,
+      });
+    }
+
+    return { reply };
   },
 });
