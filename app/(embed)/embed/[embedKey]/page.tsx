@@ -49,6 +49,87 @@ function Markdown({ children }: { children: string }) {
   );
 }
 
+/** Inline contact form the assistant shows (via request_contact) instead of
+ *  asking for name/email/phone field-by-field in chat. */
+function ContactForm({
+  brand,
+  ink,
+  onSubmit,
+}: {
+  brand: string;
+  ink: string;
+  onSubmit: (v: { name: string; email?: string; phone?: string }) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const valid = name.trim() !== "" && (email.trim() !== "" || phone.trim() !== "");
+
+  const field =
+    "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2";
+
+  async function submit() {
+    if (!valid || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await onSubmit({
+        name: name.trim(),
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+      });
+    } catch {
+      setErr("Couldn't send that — please try again.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="max-w-[85%] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+      <p className="mb-2 text-xs font-medium text-gray-500">Your details</p>
+      <div className="space-y-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Name"
+          autoComplete="name"
+          className={field}
+          style={{ outlineColor: brand }}
+        />
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+          type="email"
+          autoComplete="email"
+          className={field}
+          style={{ outlineColor: brand }}
+        />
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Phone (optional)"
+          type="tel"
+          autoComplete="tel"
+          className={field}
+          style={{ outlineColor: brand }}
+        />
+      </div>
+      {err && <p className="mt-1.5 text-xs text-red-500">{err}</p>}
+      <button
+        onClick={submit}
+        disabled={!valid || busy}
+        className="mt-2.5 h-9 w-full rounded-full text-sm font-medium transition-opacity disabled:opacity-50"
+        style={{ backgroundColor: brand, color: ink }}
+      >
+        {busy ? "Sending…" : "Send"}
+      </button>
+    </div>
+  );
+}
+
 /** Animated "thinking" indicator with a rotating status line. */
 function Thinking() {
   const [i, setI] = useState(0);
@@ -80,6 +161,7 @@ export default function EmbedWidget() {
 
   const loadConfig = useAction(api.public.config);
   const chat = useAction(api.publicChat.chat);
+  const capture = useAction(api.public.captureLead);
 
   // One opaque session id per widget open — groups this visitor's turns into a
   // single conversation for analytics/usage (no PII, resets on reload).
@@ -95,6 +177,8 @@ export default function EmbedWidget() {
   const [draft, setDraft] = useState("");
   // The in-flight turn's stream key (null when idle). Drives the live bubble.
   const [streamKey, setStreamKey] = useState<string | null>(null);
+  // Whether to show the inline contact form (the assistant asked for details).
+  const [showForm, setShowForm] = useState(false);
   const stream = useQuery(
     api.chatStream.streamText,
     streamKey ? { key: streamKey } : "skip",
@@ -119,7 +203,7 @@ export default function EmbedWidget() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages, streamKey, stream?.text]);
+  }, [messages, streamKey, stream?.text, showForm]);
 
   async function send() {
     const text = draft.trim();
@@ -127,13 +211,14 @@ export default function EmbedWidget() {
     const next = [...messages, { role: "user" as const, content: text }];
     setMessages(next);
     setDraft("");
+    setShowForm(false);
     const key =
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     setStreamKey(key);
     try {
-      const { reply } = await chat({
+      const { reply, requestContact } = await chat({
         embedKey,
         origin,
         conversationId,
@@ -141,6 +226,7 @@ export default function EmbedWidget() {
         messages: next.map((m) => ({ role: m.role, content: m.content })),
       });
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
+      if (requestContact) setShowForm(true);
     } catch {
       setMessages((m) => [
         ...m,
@@ -152,6 +238,22 @@ export default function EmbedWidget() {
     } finally {
       setStreamKey(null);
     }
+  }
+
+  async function submitContact(v: {
+    name: string;
+    email?: string;
+    phone?: string;
+  }) {
+    await capture({ embedKey, origin, ...v });
+    setShowForm(false);
+    setMessages((m) => [
+      ...m,
+      {
+        role: "assistant",
+        content: "Thanks — I've shared your details with the team. They'll be in touch soon.",
+      },
+    ]);
   }
 
   function close() {
@@ -254,6 +356,12 @@ export default function EmbedWidget() {
             <div className="max-w-[85%] rounded-2xl bg-gray-100 px-3.5 py-2 text-gray-800">
               {stream?.text ? <Markdown>{stream.text}</Markdown> : <Thinking />}
             </div>
+          </div>
+        )}
+        {/* Inline contact form — shown when the assistant calls request_contact. */}
+        {showForm && !streamKey && (
+          <div className="flex justify-start">
+            <ContactForm brand={brand} ink={ink} onSubmit={submitContact} />
           </div>
         )}
       </div>

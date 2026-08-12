@@ -35,8 +35,8 @@ export const chat = action({
     streamKey: v.optional(v.string()),
     messages: v.array(messageValidator),
   },
-  returns: v.object({ reply: v.string() }),
-  handler: async (ctx, args): Promise<{ reply: string }> => {
+  returns: v.object({ reply: v.string(), requestContact: v.boolean() }),
+  handler: async (ctx, args): Promise<{ reply: string; requestContact: boolean }> => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       appError(
@@ -64,6 +64,7 @@ export const chat = action({
         return {
           reply:
             "Thanks for reaching out! We're unable to chat right now — please contact us by email or phone and we'll get back to you shortly.",
+          requestContact: false,
         };
       }
     }
@@ -185,6 +186,10 @@ export const chat = action({
 
     let response = await runTurn();
 
+    // Whether the model asked to show the visitor a contact form this turn — the
+    // widget renders it and submits directly to public.captureLead.
+    let requestContact = false;
+
     // Tool loop — bounded so a misbehaving model can't spin forever.
     let guard = 0;
     while (response.stop_reason === "tool_use" && guard++ < 6) {
@@ -192,6 +197,7 @@ export const chat = action({
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
       for (const block of response.content) {
         if (block.type !== "tool_use") continue;
+        if (block.name === "request_contact") requestContact = true;
         const { result } = await ctx.runAction(internal.assistantTools.execute, {
           businessId,
           timezone: context.timezone ?? undefined,
@@ -242,6 +248,6 @@ export const chat = action({
       });
     }
 
-    return { reply };
+    return { reply, requestContact };
   },
 });

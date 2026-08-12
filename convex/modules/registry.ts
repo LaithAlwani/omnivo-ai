@@ -107,7 +107,7 @@ const LIST_SERVICES: Anthropic.Tool = {
 const CAPTURE_LEAD: Anthropic.Tool = {
   name: "capture_lead",
   description:
-    "Save a visitor's contact details so the team can follow up when they aren't ready to book.",
+    "Save a visitor's contact details when they've already given them in chat. If you still NEED their name/email/phone, call request_contact instead to show a form — don't ask field by field.",
   input_schema: {
     type: "object",
     properties: {
@@ -117,6 +117,22 @@ const CAPTURE_LEAD: Anthropic.Tool = {
       message: { type: "string" },
     },
     required: ["name"],
+  },
+};
+
+const REQUEST_CONTACT: Anthropic.Tool = {
+  name: "request_contact",
+  description:
+    "Show the visitor a short form to enter their name and email/phone, instead of asking for each field in chat. Use this whenever you need their contact details — to book, follow up, or note their interest. After calling it, add just one brief line inviting them to fill it in.",
+  input_schema: {
+    type: "object",
+    properties: {
+      reason: {
+        type: "string",
+        description:
+          "Short note on why you're collecting details (e.g. 'so the team can confirm your booking').",
+      },
+    },
   },
 };
 
@@ -174,6 +190,7 @@ const LOOKUP_CUSTOMER: Anthropic.Tool = {
 export const TOOL_CAPABILITY: Record<string, Capability | null> = {
   list_services: null,
   capture_lead: null,
+  request_contact: null,
   check_availability: "availability",
   book_appointment: "booking",
   lookup_customer: "lookup",
@@ -181,7 +198,7 @@ export const TOOL_CAPABILITY: Record<string, Capability | null> = {
 
 /** The tools the model may use given the enabled capabilities. */
 export function toolsFor(caps: Set<Capability>): Anthropic.Tool[] {
-  const tools: Anthropic.Tool[] = [LIST_SERVICES, CAPTURE_LEAD];
+  const tools: Anthropic.Tool[] = [LIST_SERVICES, CAPTURE_LEAD, REQUEST_CONTACT];
   if (caps.has("availability")) tools.push(CHECK_AVAILABILITY);
   if (caps.has("booking")) tools.push(BOOK_APPOINTMENT);
   if (caps.has("lookup")) tools.push(LOOKUP_CUSTOMER);

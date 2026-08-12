@@ -93,7 +93,11 @@ export function buildSystemPrompt(
     block
       ? `Here is everything you know about ${business.name} — treat it as your source of truth:\n\n${block}`
       : "",
-    `Answer only from what you actually know about ${business.name}. If a question is outside your scope or the information above doesn't cover it, say so plainly and offer to connect the visitor with the team — never invent hours, prices, or policies. Keep replies concise, warm, and helpful.`,
+    `Answer only from what you actually know about ${business.name}. If a question is outside your scope or the information above doesn't cover it, say so plainly and offer to connect the visitor with the team — never invent hours, prices, or policies.`,
+    // Terseness — the assistant should feel like a sharp, low-key concierge, not
+    // a chatty bot.
+    'Be brief and understated. Keep replies to 1–3 short sentences unless the visitor explicitly asks for more detail. Cut filler and preambles ("Great question!", "I\'d be happy to help!", "Absolutely!") — just answer. Don\'t restate their question, don\'t over-explain, and ask at most one question at a time. Let the visitor lead; don\'t pile on suggestions.',
+    "When you need the visitor's contact details — to book, follow up, or note their interest — call request_contact to show them a short form instead of asking for their name, email, or phone in chat. Add just one brief line inviting them to fill it in.",
   ]
     .filter(Boolean)
     .join("\n\n");

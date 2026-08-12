@@ -33,11 +33,16 @@ const NO_CONNS = { bookingRead: false, bookingWrite: false, lookup: false };
 const FULL_BOOKING = { bookingRead: true, bookingWrite: true, lookup: false };
 
 test("capability assembly — booking needs BOTH the flag and a connection", () => {
-  // Nothing enabled → only the core tools (list_services, capture_lead).
+  // Nothing enabled → only the core tools (list_services, capture_lead,
+  // request_contact).
   const none = toolsFor(
     capabilitiesFor(DEFAULT_ENTITLEMENTS, NO_CONNS),
   ).map((t) => t.name);
-  expect(none.sort()).toEqual(["capture_lead", "list_services"]);
+  expect(none.sort()).toEqual([
+    "capture_lead",
+    "list_services",
+    "request_contact",
+  ]);
 
   // Booking flag on but NO connection → still no booking tools.
   const flagOnly = toolsFor(

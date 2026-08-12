@@ -35,7 +35,11 @@ test("no connection → booking tools absent (FAQ-only)", async () => {
   const { businessId } = await tenant(t); // no scheduler connected
 
   const p = await plan(t, businessId);
-  expect(p.toolNames.sort()).toEqual(["capture_lead", "list_services"]);
+  expect(p.toolNames.sort()).toEqual([
+    "capture_lead",
+    "list_services",
+    "request_contact",
+  ]);
   expect(p.bookingSystem).toBe(null);
   expect(p.capabilities).not.toContain("availability");
   expect(p.capabilities).not.toContain("booking");

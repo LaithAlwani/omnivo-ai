@@ -207,6 +207,14 @@ export const execute = internalAction({
         return result("Got it — I've passed your details to the team.");
       }
 
+      case "request_contact": {
+        // The widget renders the actual form when publicChat reports the tool
+        // fired; here we just acknowledge so the model wraps up in one line.
+        return result(
+          "A short contact form is now shown to the visitor — invite them to fill it in with one brief line.",
+        );
+      }
+
       case "lookup_customer": {
         if (!i.email && !i.phone) {
           return result("Give me an email or phone number to look them up.");
