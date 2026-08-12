@@ -130,7 +130,8 @@ export const services = action({
   },
 });
 
-/** Capture a lead from the widget/assistant. */
+/** Capture a contact from the widget/assistant and route it to the tenant's CRM
+ *  (or the fallback email). Omnivo stores nothing itself. */
 export const captureLead = action({
   args: {
     ...keyArgs,
@@ -140,11 +141,11 @@ export const captureLead = action({
     message: v.optional(v.string()),
     serviceId: v.optional(v.id("services")),
   },
-  returns: v.object({ leadId: v.id("leads") }),
-  handler: async (ctx, args): Promise<{ leadId: Id<"leads"> }> => {
+  returns: v.object({ ok: v.literal(true) }),
+  handler: async (ctx, args): Promise<{ ok: true }> => {
     const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
     await enforceLimit(ctx, "widgetLead", businessId);
-    const leadId = await ctx.runMutation(internal.leads.captureForBusiness, {
+    await ctx.runMutation(internal.leads.captureForBusiness, {
       businessId,
       source: "widget",
       name: args.name,
@@ -153,6 +154,6 @@ export const captureLead = action({
       message: args.message,
       serviceId: args.serviceId,
     });
-    return { leadId };
+    return { ok: true };
   },
 });

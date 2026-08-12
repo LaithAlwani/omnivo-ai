@@ -24,8 +24,7 @@ export default function OverviewPage() {
   const loading = stats === undefined;
   const tier = b.tier ?? "starter";
 
-  const noActivity =
-    !loading && stats.conversations === 0 && stats.totalLeads === 0;
+  const noActivity = !loading && stats.conversations === 0;
 
   // Greeting reflects the real state of the account.
   let greet: React.ReactNode = b.name;
@@ -35,17 +34,9 @@ export default function OverviewPage() {
       greet = <>Your assistant is <Em>ready</Em>.</>;
       greetSub =
         "It hasn’t spoken to anyone yet — a few steps and it can start answering for you.";
-    } else if (stats.openLeads > 0) {
-      const n = stats.openLeads;
-      greet = (
-        <>
-          {n} {n === 1 ? "lead" : "leads"} <Em>need</Em> you.
-        </>
-      );
-      greetSub = `${stats.conversationsThisMonth} conversation${stats.conversationsThisMonth === 1 ? "" : "s"} this month · ${stats.totalLeads} lead${stats.totalLeads === 1 ? "" : "s"} total.`;
     } else {
       greet = <>Your assistant is <Em>humming</Em>.</>;
-      greetSub = `${stats.conversationsThisMonth} conversation${stats.conversationsThisMonth === 1 ? "" : "s"} this month · ${stats.totalLeads} lead${stats.totalLeads === 1 ? "" : "s"} total.`;
+      greetSub = `${stats.conversationsThisMonth} conversation${stats.conversationsThisMonth === 1 ? "" : "s"} this month · ${stats.conversationsThisWeek} this week.`;
     }
   }
 
@@ -54,35 +45,19 @@ export default function OverviewPage() {
     : [
         {
           v: stats.conversationsThisMonth,
-          label: "Conversations",
+          label: "Conversations this month",
           sub:
             stats.conversationsThisMonth > 0
-              ? `${stats.conversationsThisWeek} this week`
-              : "Add your first answer",
+              ? `${stats.conversationsThisWeek} in the last 7 days`
+              : "Add your first answer to get talking",
         },
         {
-          v: stats.totalLeads,
-          label: "Total leads",
+          v: stats.conversations,
+          label: "Conversations all time",
           sub:
-            stats.totalLeads > 0
-              ? `${stats.openLeads} still open`
-              : "Share your assistant",
-        },
-        {
-          v: stats.openLeads,
-          label: "Open leads",
-          sub:
-            stats.openLeads > 0
-              ? `${stats.totalLeads} total`
-              : "Share your assistant",
-        },
-        {
-          v: stats.wonLeads,
-          label: "Won",
-          sub:
-            stats.totalLeads > 0
-              ? `${Math.round((stats.wonLeads / stats.totalLeads) * 100)}% of leads`
-              : "Nothing closed yet",
+            stats.conversations > 0
+              ? "Since the assistant went live"
+              : "Share your assistant to get started",
         },
       ];
 

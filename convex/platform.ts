@@ -179,21 +179,6 @@ export const businessDetail = query({
     const business = await ctx.db.get(businessId);
     if (!business) appError("NOT_FOUND", "That business doesn't exist.");
 
-    const leadRows = await ctx.db
-      .query("leads")
-      .withIndex("by_business", (q) => q.eq("businessId", businessId))
-      .order("desc")
-      .take(25);
-    const leads = leadRows.map((l) => ({
-      _id: l._id,
-      name: l.name,
-      email: l.email ?? null,
-      phone: l.phone ?? null,
-      status: l.status,
-      source: l.source,
-      createdAt: l._creationTime,
-    }));
-
     const memberRows = await ctx.db
       .query("memberships")
       .withIndex("by_business", (q) => q.eq("businessId", businessId))
@@ -234,7 +219,6 @@ export const businessDetail = query({
         domains: business.domains,
         createdAt: business._creationTime,
       },
-      leads,
       members,
       connections,
     };

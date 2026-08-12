@@ -20,7 +20,6 @@ function navItems(slug: string) {
     // Branding, Locations, Team, Services & Knowledge live behind this one entry
     // now — see app/(app)/dashboard/[businessSlug]/business/ and its sub-tabs.
     { label: "Business", href: `/dashboard/${slug}/business`, exact: false },
-    { label: "Leads", href: `/dashboard/${slug}/leads`, exact: false },
     { label: "Integrations", href: `/dashboard/${slug}/integrations`, exact: false },
     { label: "Usage", href: `/dashboard/${slug}/usage`, exact: false },
   ];

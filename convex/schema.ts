@@ -27,15 +27,7 @@ export const tierValidator = v.union(
 // as "plan" going forward.
 export const planValidator = tierValidator;
 
-// Lead pipeline stages, in order. `won`/`lost` are terminal.
-export const leadStatusValidator = v.union(
-  v.literal("new"),
-  v.literal("contacted"),
-  v.literal("qualified"),
-  v.literal("won"),
-  v.literal("lost"),
-);
-
+// Where a captured contact came from (routed out to the tenant's CRM).
 export const contactSourceValidator = v.union(
   v.literal("dashboard"),
   v.literal("assistant"),
@@ -175,24 +167,6 @@ export default defineSchema({
     active: v.boolean(),
     order: v.number(),
   }).index("by_business", ["businessId"]),
-
-  // Leads — captured interest (from the assistant, widget, or entered by hand).
-  // A simple pipeline: new → contacted → qualified → won/lost. `notes` is a
-  // free-text internal scratchpad.
-  leads: defineTable({
-    businessId: v.id("businesses"),
-    name: v.string(),
-    email: v.optional(v.string()),
-    phone: v.optional(v.string()),
-    message: v.optional(v.string()), // what the lead asked about
-    serviceId: v.optional(v.id("services")), // service they showed interest in
-    status: leadStatusValidator,
-    source: contactSourceValidator,
-    notes: v.optional(v.string()),
-    updatedAt: v.number(),
-  })
-    .index("by_business", ["businessId"])
-    .index("by_business_status", ["businessId", "status"]),
 
   // Per-tenant business knowledge — the assistant's source of truth. One row
   // per business; edited in the dashboard, injected into the Leo system prompt.

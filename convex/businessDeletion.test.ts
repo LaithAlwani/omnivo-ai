@@ -22,16 +22,8 @@ async function setup() {
     embedKeyHash: hash,
     embedKey: key,
   });
-  // Seed a couple of child rows beyond what provision creates (location,
-  // tenantFeatures).
+  // Seed a child row beyond what provision creates (location, tenantFeatures).
   await t.run(async (ctx) => {
-    await ctx.db.insert("leads", {
-      businessId,
-      name: "Lead",
-      status: "new",
-      source: "widget",
-      updatedAt: 0,
-    });
     await ctx.db.insert("conversations", {
       businessId,
       conversationKey: "k1",
@@ -48,7 +40,6 @@ const childCount = async (
 ) =>
   await t.run(async (ctx) => {
     const tables = [
-      "leads",
       "conversations",
       "locations",
       "tenantFeatures",

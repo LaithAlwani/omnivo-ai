@@ -14,43 +14,18 @@ import { planForBusiness } from "./lib/accounts";
 const CAP = 1000;
 const DAY = 86_400_000;
 
-const LEAD_STATUSES = [
-  "new",
-  "contacted",
-  "qualified",
-  "won",
-  "lost",
-] as const;
-
 export const overview = query({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {
     const { business } = await requireMemberBySlug(ctx, slug);
     const now = Date.now();
 
-    // Leads bucketed by pipeline stage (bounded per stage).
-    let capped = false;
-    const byStatus = { new: 0, contacted: 0, qualified: 0, won: 0, lost: 0 };
-    for (const status of LEAD_STATUSES) {
-      const rows = await ctx.db
-        .query("leads")
-        .withIndex("by_business_status", (q) =>
-          q.eq("businessId", business._id).eq("status", status),
-        )
-        .take(CAP);
-      byStatus[status] = rows.length;
-      if (rows.length === CAP) capped = true;
-    }
-
-    const openLeads = byStatus.new + byStatus.contacted + byStatus.qualified;
-    const totalLeads = LEAD_STATUSES.reduce((s, st) => s + byStatus[st], 0);
-
-    // Conversations (widget chat sessions).
+    // Conversations (widget chat sessions) — the dashboard's activity metric.
     const convoRows = await ctx.db
       .query("conversations")
       .withIndex("by_business", (q) => q.eq("businessId", business._id))
       .take(CAP);
-    if (convoRows.length === CAP) capped = true;
+    const capped = convoRows.length === CAP;
     const conversations = convoRows.length;
     const conversationsThisWeek = convoRows.filter(
       (c) => c.lastMessageAt >= now - 7 * DAY,
@@ -79,10 +54,6 @@ export const overview = query({
       conversationsThisWeek,
       conversationsThisMonth,
       conversationCap: conversationCap(plan),
-      openLeads,
-      wonLeads: byStatus.won,
-      totalLeads,
-      leadsByStatus: byStatus,
       capped,
     };
   },

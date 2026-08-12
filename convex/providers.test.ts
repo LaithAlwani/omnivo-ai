@@ -100,9 +100,11 @@ test("no provider connected → book_appointment hands off + captures a lead", a
     input: { startMs: soon, customerName: "Ada", customerEmail: "ada@x.com" },
   });
 
-  // Hand-off message, and the details landed as a lead for the team.
+  // Hand-off message, and the contact is routed out (fallback email, since no
+  // CRM is connected — Omnivo stores nothing itself).
   expect(res.result.toLowerCase()).toContain("passed your details");
-  const leads = await t.run((ctx) => ctx.db.query("leads").collect());
-  expect(leads).toHaveLength(1);
-  expect(leads[0].name).toBe("Ada");
+  const scheduled = await t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect(),
+  );
+  expect(scheduled.some((s) => s.name.includes("sendLeadFallback"))).toBe(true);
 });

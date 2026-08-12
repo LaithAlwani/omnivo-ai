@@ -8,10 +8,6 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { errorText } from "@/lib/errors";
 
-const th =
-  "px-3 py-2 text-left font-mono text-[0.6rem] uppercase tracking-wider text-faint";
-const td = "px-3 py-2 text-bone-dim";
-
 function fmtDate(ms: number) {
   return new Date(ms).toLocaleDateString(undefined, {
     month: "short",
@@ -221,7 +217,7 @@ export default function PlatformBusinessDetail() {
     return <div className="text-sm text-faint">Loading…</div>;
   }
 
-  const { business, leads, members, connections } = data;
+  const { business, members, connections } = data;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -271,33 +267,6 @@ export default function PlatformBusinessDetail() {
         installFeeCents={business.installFeeCents}
         monthlyOverrideCents={business.monthlyOverrideCents}
       />
-
-      <Section title="Recent leads" count={leads.length}>
-        {leads.length === 0 ? (
-          <Empty label="No leads yet." />
-        ) : (
-          <table className="w-full min-w-[34rem] text-sm">
-            <thead>
-              <tr className="border-b border-line">
-                <th className={th}>Name</th>
-                <th className={th}>Contact</th>
-                <th className={th}>Status</th>
-                <th className={th}>Added</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leads.map((l) => (
-                <tr key={l._id} className="border-b border-line/60 last:border-0">
-                  <td className="px-3 py-2 text-bone">{l.name}</td>
-                  <td className={td}>{l.email ?? l.phone ?? "—"}</td>
-                  <td className={td}>{l.status}</td>
-                  <td className={td}>{fmtDate(l.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
 
       <div className="grid gap-8 sm:grid-cols-2">
         <Section title="Team" count={members.length}>

@@ -86,8 +86,18 @@ test("tool book_appointment — refuses without name + email", async () => {
   expect(result.toLowerCase()).toContain("need");
 });
 
-test("tool book_appointment — no scheduler connected → hands off + captures a lead", async () => {
-  const { t, as, businessId } = await setup();
+/** Names of functions currently on the scheduler queue. */
+async function scheduledNames(
+  t: Awaited<ReturnType<typeof convexTest>>,
+): Promise<string[]> {
+  const rows = await t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect(),
+  );
+  return rows.map((r) => r.name);
+}
+
+test("tool book_appointment — no scheduler connected → hands off + routes the contact", async () => {
+  const { t, businessId } = await setup();
   const { result } = await call(t, businessId, "book_appointment", {
     startMs: futureSlot(),
     serviceName: "Color",
@@ -95,18 +105,17 @@ test("tool book_appointment — no scheduler connected → hands off + captures 
     customerEmail: "visitor@x.com",
   });
   expect(result.toLowerCase()).toContain("passed your details");
-  const leads = await as.query(api.leads.list, { slug: "clip" });
-  expect(leads[0]).toMatchObject({ name: "Web Visitor", source: "assistant" });
+  // No CRM connected → the contact is routed to the fallback email.
+  expect((await scheduledNames(t)).some((n) => n.includes("sendLeadFallback"))).toBe(true);
 });
 
-test("tool capture_lead — saves an assistant-sourced lead", async () => {
-  const { t, as, businessId } = await setup();
+test("tool capture_lead — captures an assistant-sourced contact", async () => {
+  const { t, businessId } = await setup();
   const { result } = await call(t, businessId, "capture_lead", {
     name: "Curious",
     email: "curious@x.com",
     message: "pricing?",
   });
   expect(result.toLowerCase()).toContain("passed your details");
-  const leads = await as.query(api.leads.list, { slug: "clip" });
-  expect(leads[0]).toMatchObject({ name: "Curious", source: "assistant" });
+  expect((await scheduledNames(t)).some((n) => n.includes("sendLeadFallback"))).toBe(true);
 });
