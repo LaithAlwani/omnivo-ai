@@ -14,8 +14,6 @@ import {
   locationLimit,
   planPrice,
   usagePeriod,
-  overageUnits,
-  overageCostCents,
   creditStatus,
 } from "./lib/tiers";
 
@@ -76,17 +74,12 @@ export const myAccount = query({
 
     const limits = tierLimits(account.plan);
     const convUsed = counter?.conversations ?? 0;
-    const emailUsed = counter?.email ?? 0;
-    const smsUsed = counter?.sms ?? 0;
-    // AI conversations → token-based credit balance (overage accrues past the
-    // included monthly allowance). Emails/SMS keep capped overage.
+    // AI usage → a token-based credit balance; overage accrues in credits past
+    // the included monthly allowance. It's the only metered/billable resource.
     const billableTokens =
       (counter?.aiInputTokens ?? 0) + (counter?.aiOutputTokens ?? 0);
     const aiCredits = creditStatus(account.plan, billableTokens);
-    const overageCents =
-      aiCredits.overageCents +
-      overageCostCents("emails", overageUnits(emailUsed, limits.emailsPerMonth)) +
-      overageCostCents("sms", overageUnits(smsUsed, limits.smsPerMonth));
+    const overageCents = aiCredits.overageCents;
 
     const includedLocations = locationLimit(account.plan);
     const businessCount = (
@@ -119,10 +112,8 @@ export const myAccount = query({
         // Retained as an activity metric; the credit balance (billing.aiCredits)
         // is now what governs AI usage.
         conversations: { used: convUsed, cap: limits.conversationsPerMonth },
-        emails: { used: emailUsed, cap: limits.emailsPerMonth },
-        sms: { used: smsUsed, cap: limits.smsPerMonth },
       },
-      // Estimated overage this period across the pooled allowances.
+      // Estimated AI-credit overage this period.
       overageCents,
       features: {
         whiteLabel: limits.whiteLabel,

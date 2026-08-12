@@ -263,16 +263,13 @@ export default defineSchema({
 
   // Per-ACCOUNT monthly usage counters (one row per "YYYY-MM"). Usage is pooled
   // across all of an account's projects, so counters key on `accountId`.
-  // Incremented when a new conversation opens / an SMS or email is sent; read to
-  // enforce plan caps in O(1). `businessId` is retained (optional) only for the
-  // account backfill migration and dropped in a later cleanup.
+  // Bumped when a conversation opens / AI tokens are spent; read to surface the
+  // AI-credit balance. `businessId` is a legacy backfill remnant (optional).
   usageCounters: defineTable({
     accountId: v.optional(v.id("accounts")),
     businessId: v.optional(v.id("businesses")),
     period: v.string(), // "YYYY-MM" (UTC)
     conversations: v.number(),
-    sms: v.optional(v.number()),
-    email: v.optional(v.number()),
     // AI token usage this period — the driver for AI credits (billable =
     // input+output) and our cost/margin (`aiCostCents`, incl. cheap cache reads).
     aiInputTokens: v.optional(v.number()),

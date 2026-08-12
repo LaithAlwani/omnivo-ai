@@ -78,9 +78,10 @@ export default function TermsPage() {
 
       <h2>6. Third-party services</h2>
       <p>
-        The Service integrates with third-party tools such as Google Calendar and email
-        and SMS providers. Your use of those integrations is subject to the respective
-        third party&rsquo;s terms, and we are not responsible for their services.
+        The Service integrates with third-party tools such as your booking system,
+        CRM, and email providers. Your use of those integrations is subject to the
+        respective third party&rsquo;s terms, and we are not responsible for their
+        services.
       </p>
 
       <h2>7. Intellectual property</h2>

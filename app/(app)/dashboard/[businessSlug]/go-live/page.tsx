@@ -127,6 +127,25 @@ export default function GoLivePage() {
         </ul>
       </div>
 
+      {/* Optional: connect booking / CRM */}
+      <div className="mt-4 rounded-xl border border-line bg-surface/40 p-6">
+        <div className="font-mono text-xs uppercase tracking-wider text-faint">
+          Connect your tools · optional
+        </div>
+        <p className="mt-2 text-sm text-muted">
+          The assistant can go live answering questions and capturing leads on its
+          own. Connect your booking system or CRM so it can also book and sync
+          leads — or, if you don&rsquo;t have one yet, LA Digital can set booking
+          and CRM up for you.
+        </p>
+        <Link
+          href={`/dashboard/${b.slug}/integrations`}
+          className="mt-3 inline-block text-xs text-ember hover:text-flare"
+        >
+          Manage connections →
+        </Link>
+      </div>
+
       {/* Domains editor */}
       <div className="mt-4 rounded-xl border border-line bg-surface/40 p-6">
         <div className="font-mono text-xs uppercase tracking-wider text-faint">

@@ -66,7 +66,7 @@ function IntegrationsInner() {
         canEdit={canEdit}
         kind="crmOutbound"
         title="CRM — outbound sync"
-        blurb="POST new leads / bookings / reviews to this URL (e.g. a Zapier or CRM webhook)."
+        blurb="POST new leads to this URL (e.g. a Zapier or CRM webhook)."
         current={find("crmOutbound")}
       />
       <WebhookCard

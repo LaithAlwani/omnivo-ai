@@ -3,7 +3,7 @@ import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import { planPrice, monthlyCents, smsCap, locationLimit } from "./lib/tiers";
+import { planPrice, monthlyCents, locationLimit } from "./lib/tiers";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -38,10 +38,7 @@ test("pricing helpers — published price, monthlyCents override, caps", () => {
   expect(monthlyCents("premium", 60000)).toBe(60000);
   expect(monthlyCents("enterprise", 120000)).toBe(120000);
 
-  // SMS is in every tier now, scaling up; locations scale with the tier.
-  expect(smsCap("starter")).toBe(100);
-  expect(smsCap("professional")).toBe(500);
-  expect(smsCap("premium")).toBe(1500);
+  // Locations scale with the tier.
   expect(locationLimit("starter")).toBe(1);
   expect(locationLimit("professional")).toBe(2);
   expect(locationLimit("premium")).toBe(5);

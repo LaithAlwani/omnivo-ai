@@ -48,7 +48,7 @@ export default function PrivacyPage() {
           generate assistant responses, book appointments, and capture and route leads;
         </li>
         <li>process payments and manage your subscription;</li>
-        <li>send transactional messages such as confirmations, reminders, and follow-ups;</li>
+        <li>send operational messages such as new-lead notifications and account emails;</li>
         <li>monitor for abuse, secure the Service, and comply with legal obligations.</li>
       </ul>
 
@@ -69,8 +69,9 @@ export default function PrivacyPage() {
           captured leads are shared with the business operating the assistant.
         </li>
         <li>
-          <strong>Service providers</strong> — hosting, AI model, email, SMS, and calendar
-          providers that process data on our behalf under appropriate safeguards.
+          <strong>Service providers</strong> — hosting, AI model, and email
+          providers, plus the booking/CRM tools you connect, that process data on
+          our behalf under appropriate safeguards.
         </li>
         <li>
           <strong>Legal reasons</strong> — where required by law, or to protect the rights,

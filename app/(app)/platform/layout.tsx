@@ -1,68 +1,22 @@
-"use client";
-
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useQuery } from "convex/react";
+import { unauthorized } from "next/navigation";
+import { fetchQuery } from "convex/nextjs";
+import { convexAuthNextjsToken } from "@convex-dev/auth/nextjs/server";
 import { api } from "@/convex/_generated/api";
-import { Logo } from "@/components/layout/logo";
-import { AppShell, SidebarLink } from "@/components/app/app-shell";
+import { PlatformChrome } from "./platform-chrome";
 
-function PlatformNav() {
-  const pathname = usePathname();
-  return (
-    <>
-      <SidebarLink
-        href="/platform"
-        active={pathname === "/platform" || /^\/platform\/[^/]+$/.test(pathname)}
-      >
-        Businesses
-      </SidebarLink>
-      <SidebarLink href="/platform/new" active={pathname === "/platform/new"}>
-        New tenant
-      </SidebarLink>
-    </>
-  );
-}
-
-// The cross-tenant operator portal. Access is gated here for UX, but every
-// underlying query independently enforces requirePlatformAdmin server-side — so
-// this screen is convenience, not the real boundary.
-export default function PlatformLayout({
+// Server guard for the cross-tenant operator portal. Unauthenticated users are
+// already bounced to /signin by the middleware; here we reject a signed-in user
+// who isn't a platform admin with a real 401 (renders app/unauthorized.tsx).
+// Every underlying query also enforces requirePlatformAdmin, so this is UX, not
+// the security boundary.
+export default async function PlatformLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const me = useQuery(api.platform.me);
+  const token = await convexAuthNextjsToken();
+  const me = await fetchQuery(api.platform.me, {}, token ? { token } : {});
+  if (!me) unauthorized();
 
-  if (me === undefined) {
-    return (
-      <div className="grid min-h-dvh place-items-center text-sm text-faint">
-        Loading…
-      </div>
-    );
-  }
-
-  if (me === null) {
-    return (
-      <div className="grid min-h-dvh place-items-center px-6 text-center">
-        <div className="max-w-sm">
-          <Logo />
-          <h1 className="mt-8 font-display text-2xl text-bone">
-            No platform access
-          </h1>
-          <p className="mt-2 text-sm text-muted">
-            This area is for Omnivo operators only.
-          </p>
-          <Link
-            href="/dashboard"
-            className="mt-6 inline-block text-sm text-ember transition-colors hover:text-flare"
-          >
-            ← Back to your dashboard
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  return <AppShell nav={<PlatformNav />}>{children}</AppShell>;
+  return <PlatformChrome>{children}</PlatformChrome>;
 }

@@ -25,10 +25,6 @@ export interface TierLimits {
   /** Legacy conversation cap — retired in favour of AI credits (token-based).
    *  Now always null (no conversation cap); kept so existing readers compile. */
   conversationsPerMonth: number | null;
-  /** Pooled monthly email allowance. */
-  emailsPerMonth: number | null;
-  /** Pooled monthly SMS allowance (0 = SMS not included on this tier). */
-  smsPerMonth: number | null;
   /** Locations included with the plan; extras are billed per location. */
   locationLimit: number | null;
   whiteLabel: boolean;
@@ -47,8 +43,6 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
     // Connecting the client's own systems is the product — Integrations is base.
     includedModules: ["booking", "leadQualification", "integrations"],
     conversationsPerMonth: null,
-    emailsPerMonth: 2500,
-    smsPerMonth: 100,
     locationLimit: 1,
     whiteLabel: false,
     customEmailDomain: false,
@@ -57,8 +51,6 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
     priceMonthly: 449,
     includedModules: ["booking", "leadQualification", "integrations"],
     conversationsPerMonth: null,
-    emailsPerMonth: 5000,
-    smsPerMonth: 500,
     locationLimit: 2,
     whiteLabel: false,
     customEmailDomain: false,
@@ -67,8 +59,6 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
     priceMonthly: 499,
     includedModules: ALL_MODULES,
     conversationsPerMonth: null,
-    emailsPerMonth: 15000,
-    smsPerMonth: 1500,
     locationLimit: 5,
     whiteLabel: true,
     customEmailDomain: true,
@@ -77,8 +67,6 @@ export const TIER_LIMITS: Record<Tier, TierLimits> = {
     priceMonthly: null,
     includedModules: ALL_MODULES,
     conversationsPerMonth: null,
-    emailsPerMonth: null,
-    smsPerMonth: null,
     locationLimit: null,
     whiteLabel: true,
     customEmailDomain: true,
@@ -92,17 +80,6 @@ export function tierLimits(plan: Plan): TierLimits {
 /** Monthly conversation cap (null = unlimited). */
 export function conversationCap(plan: Plan): number | null {
   return TIER_LIMITS[plan].conversationsPerMonth;
-}
-
-/** Monthly email cap (null = unlimited). */
-export function emailCap(plan: Plan): number | null {
-  return TIER_LIMITS[plan].emailsPerMonth;
-}
-
-/** Monthly SMS cap (0 = not included, null = unlimited). The SMS Automation
- *  module still gates whether a project may send at all. */
-export function smsCap(plan: Plan): number | null {
-  return TIER_LIMITS[plan].smsPerMonth;
 }
 
 /** Locations included with the plan (null = unlimited). Extras are billed. */
@@ -262,35 +239,6 @@ export function creditStatus(plan: Plan, billableTokens: number): CreditStatus {
     overageBlocks: overTokens > 0 ? Math.ceil(overTokens / OVERAGE_TOKENS_PER_BLOCK) : 0,
     overageCents: conversationOverageCents(overTokens),
   };
-}
-
-// --- Overage accounting (emails + SMS) --------------------------------------
-// Emails/SMS have a hard monthly cap; overage is metered per-unit for internal
-// invoicing evidence. (Conversations use the token-credit model above.)
-
-export type MeteredUnit = "emails" | "sms";
-
-/** Per-unit overage once a monthly cap is passed (internal metering). */
-export const OVERAGE_RATES: Record<
-  MeteredUnit,
-  { per: number; cents: number }
-> = {
-  emails: { per: 1, cents: 5 }, // $0.05 / email
-  sms: { per: 1, cents: 50 }, // $0.50 / SMS
-};
-
-/** Units used beyond the cap (0 when under, or when the plan is unlimited). */
-export function overageUnits(used: number, cap: number | null): number {
-  if (cap === null) return 0;
-  return Math.max(0, used - cap);
-}
-
-/** Estimated overage cost in cents for `units` of a metered unit (billed per
- *  block, rounded up). */
-export function overageCostCents(unit: MeteredUnit, units: number): number {
-  if (units <= 0) return 0;
-  const { per, cents } = OVERAGE_RATES[unit];
-  return Math.ceil(units / per) * cents;
 }
 
 /** UTC "YYYY-MM" usage period for a timestamp (the month a unit counts toward).

@@ -7,7 +7,6 @@ import {
   pricingTiers,
   pricingModules,
   additionalLocationPrice,
-  overageRates,
   appHref,
 } from "@/lib/site-config";
 
@@ -23,8 +22,6 @@ function Dash() {
 }
 
 export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
-  const num = (n: number) => n.toLocaleString();
-
   return (
     <section id="pricing" className="section relative scroll-mt-20">
       <div className="shell">
@@ -104,33 +101,6 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
                   </td>
                 ))}
               </Row>
-              <Row label="Emails / mo">
-                {pricingTiers.map((t) => (
-                  <td key={t.key} className={cellCls(t.featured)}>
-                    {num(t.emails)}
-                  </td>
-                ))}
-              </Row>
-              <Row label="SMS / mo">
-                {pricingTiers.map((t) => (
-                  <td key={t.key} className={cellCls(t.featured)}>
-                    {t.sms > 0 ? num(t.sms) : <Dash />}
-                  </td>
-                ))}
-              </Row>
-              {/* Overage — same rate on every plan when you go over. */}
-              {overageRates.map((o) => (
-                <Row key={o.label} label={o.label}>
-                  {pricingTiers.map((t) => (
-                    <td key={t.key} className={`${cellCls(t.featured)} text-bone`}>
-                      {o.price}{" "}
-                      <span className="text-xs font-normal text-faint">
-                        {o.unit}
-                      </span>
-                    </td>
-                  ))}
-                </Row>
-              ))}
               <tr>
                 <td className="p-3" />
                 {pricingTiers.map((t) => (

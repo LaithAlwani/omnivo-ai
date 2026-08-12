@@ -14,10 +14,7 @@ import {
   locationLimit,
   creditGrantCents,
   creditsFromCents,
-  emailCap,
-  smsCap,
   ADDITIONAL_LOCATION_CENTS,
-  OVERAGE_RATES,
 } from "@/convex/lib/tiers";
 import { MODULE_CATALOG } from "@/convex/modules/registry";
 
@@ -83,14 +80,6 @@ export const tools: Tool[] = [
     description:
       "Every enquiry becomes a tracked lead with contact details, source, and follow-up — pushed to the CRM you already use.",
     icon: "leads",
-  },
-  {
-    id: "messaging",
-    name: "Email & SMS",
-    tagline: "Follows up for you",
-    description:
-      "Confirmations, reminders, and follow-ups sent automatically — by email and text.",
-    icon: "mail",
   },
   {
     id: "analytics",
@@ -188,7 +177,6 @@ export const plans: Plan[] = [
       "Booking + Lead Capture + Connections",
       "1 location",
       creditBullet("starter"),
-      `${smsCap("starter")!.toLocaleString()} SMS / mo`,
     ],
     cta: "Get started",
   },
@@ -198,12 +186,11 @@ export const plans: Plan[] = [
     kind: "platform",
     price: `$${planPrice("professional")}`,
     cadence: "/mo",
-    blurb: "More locations and higher monthly limits.",
+    blurb: "More locations and a bigger monthly AI-credit balance.",
     features: [
       "Everything in Starter",
       "2 locations",
       creditBullet("professional"),
-      `${smsCap("professional")!.toLocaleString()} SMS / mo`,
     ],
     cta: "Get started",
   },
@@ -250,8 +237,6 @@ export const pricingTiers = PAID_TIERS.map((key) => ({
   locations: locationLimit(key)!,
   // AI credits — a monthly credit balance the AI draws down as it works.
   credits: creditsFromCents(creditGrantCents(key)!),
-  emails: emailCap(key)!,
-  sms: smsCap(key)!,
   whiteLabel: TIER_LIMITS[key].whiteLabel,
   modules: new Set(includedModules(key)),
   featured: key === "premium",
@@ -264,21 +249,4 @@ export const pricingModules = MODULE_CATALOG.map((m) => ({
 }));
 
 export const additionalLocationPrice = ADDITIONAL_LOCATION_CENTS / 100;
-
-const money = (cents: number) =>
-  cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
-
-// Metered overage once you pass a monthly allowance (per unit).
-export const overageRates = [
-  {
-    label: "Extra emails",
-    price: money(OVERAGE_RATES.emails.cents),
-    unit: "per email",
-  },
-  {
-    label: "Extra SMS",
-    price: money(OVERAGE_RATES.sms.cents),
-    unit: "per SMS",
-  },
-] as const;
 

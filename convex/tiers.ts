@@ -6,29 +6,15 @@ import { requireMemberBySlug } from "./lib/authz";
 import {
   tierLimits,
   usagePeriod,
-  overageUnits,
-  overageCostCents,
   creditStatus,
   creditTokens,
-  type MeteredUnit,
 } from "./lib/tiers";
 import { planForBusiness } from "./lib/accounts";
 
-const meter = (used: number, cap: number | null, unit: MeteredUnit) => {
-  const over = overageUnits(used, cap);
-  return {
-    used,
-    cap,
-    remaining: cap === null ? null : Math.max(0, cap - used),
-    overage: over,
-    overageCents: overageCostCents(unit, over),
-  };
-};
-
 // -----------------------------------------------------------------------------
 // Server-side plan helpers that need DB reads. Usage is pooled at the account
-// level, so counters are read by accountId. AI conversations are governed by the
-// token-based credit economy (no hard cap); emails/SMS still have monthly caps.
+// level, so counters are read by accountId. The only metered resource is AI
+// usage — a token-based credit balance (no hard cap; overage accrues in credits).
 // -----------------------------------------------------------------------------
 
 /** This period's billable AI tokens (input+output) for an account. */
@@ -97,8 +83,6 @@ export const planUsage = query({
         ...creditStatus(plan, billableTokens),
         conversations: counter?.conversations ?? 0,
       },
-      emails: meter(counter?.email ?? 0, limits.emailsPerMonth, "emails"),
-      sms: meter(counter?.sms ?? 0, limits.smsPerMonth, "sms"),
       features: {
         whiteLabel: limits.whiteLabel,
         customEmailDomain: limits.customEmailDomain,

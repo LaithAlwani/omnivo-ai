@@ -6,7 +6,6 @@ import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { errorText } from "@/lib/errors";
 import { useBusiness } from "@/components/dashboard/business-context";
-import { UsageMeter } from "@/components/dashboard/usage-meter";
 import { plans, pricingTiers } from "@/lib/site-config";
 import { creditsFromCents } from "@/convex/lib/tiers";
 
@@ -191,36 +190,6 @@ export default function UsagePage() {
           </div>
         );
       })()}
-
-      {/* Email & SMS usage this period */}
-      <div className="mt-4 rounded-xl border border-line bg-surface/40 p-6">
-        <div className="font-mono text-xs uppercase tracking-wider text-faint">
-          Emails &amp; SMS · {data.period}
-        </div>
-        <div className="mt-4 space-y-5">
-          <UsageMeter
-            label="Emails"
-            used={data.emails.used}
-            cap={data.emails.cap}
-          />
-          <UsageMeter label="SMS" used={data.sms.used} cap={data.sms.cap} />
-        </div>
-        <p className="mt-5 text-xs text-faint">
-          Email and SMS usage is pooled across your account and resets at the
-          start of each month.
-        </p>
-        {(() => {
-          const overCents = data.emails.overageCents + data.sms.overageCents;
-          if (overCents <= 0) return null;
-          return (
-            <p className="mt-3 rounded-lg border border-ember/40 bg-ember-soft/40 px-3 py-2 text-xs text-bone-dim">
-              You&rsquo;re over your monthly allowance. Estimated overage this
-              period:{" "}
-              <span className="text-bone">${(overCents / 100).toFixed(2)}</span>.
-            </p>
-          );
-        })()}
-      </div>
 
       {/* Included features */}
       <div className="mt-4 rounded-xl border border-line bg-surface/40 p-6">

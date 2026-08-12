@@ -15,7 +15,7 @@ export const faqs: Faq[] = [
   },
   {
     q: "What happens to the leads it captures?",
-    a: "Every enquiry becomes a tracked lead with the contact's details, what they asked, and where they came from. You see them in your dashboard, follow up by email or SMS, and — when your CRM is connected — the lead is pushed straight into it.",
+    a: "Every enquiry becomes a tracked lead with the contact's details, what they asked, and where they came from. You see them in your dashboard, follow up by email, and — when your CRM is connected — the lead is pushed straight into it.",
   },
   {
     q: "Will it look like my brand or like Omnivo AI?",
@@ -31,6 +31,6 @@ export const faqs: Faq[] = [
   },
   {
     q: "How much does it cost?",
-    a: "Two paths. Set it up yourself on a published monthly plan: Starter $299/mo (Booking + Lead Capture + Connections, 1 location, $15 AI credits, 2,500 emails, 100 SMS), Professional $449/mo (2 locations, $30 AI credits, 500 SMS), Premium $499/mo (white-label + custom domain, 5 locations, $50 AI credits, 15,000 emails, 1,500 SMS). Extra locations are $19.99/mo each. AI credits are a monthly balance spent by the tokens your assistant uses to chat — heavier months cost more. Prefer we install it? We audit your systems, connect them, and go live for you; installed deployments are quoted per project (a setup fee plus monthly). Book an install call for a quote. Enterprise is custom.",
+    a: "Two paths. Set it up yourself on a published monthly plan: Starter $299/mo (Booking + Lead Capture + Connections, 1 location, $15 AI credits), Professional $449/mo (2 locations, $30 AI credits), Premium $499/mo (white-label + custom domain, 5 locations, $50 AI credits). Extra locations are $19.99/mo each. AI credits are a monthly balance spent by the tokens your assistant uses to chat — heavier months cost more, and it's the only usage-based charge. Prefer we install it? We audit your systems, connect them, and go live for you; installed deployments are quoted per project (a setup fee plus monthly). Book an install call for a quote. Enterprise is custom.",
   },
 ];

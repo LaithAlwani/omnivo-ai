@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { requireMemberBySlug } from "./lib/authz";
-import { conversationCap, emailCap, smsCap, usagePeriod } from "./lib/tiers";
+import { conversationCap, usagePeriod } from "./lib/tiers";
 import { planForBusiness } from "./lib/accounts";
 
 // -----------------------------------------------------------------------------
@@ -56,8 +56,7 @@ export const overview = query({
       (c) => c.lastMessageAt >= now - 7 * DAY,
     ).length;
 
-    // Current-month usage vs the plan's caps. Usage is pooled at the account
-    // level (O(1) counter read); caps derive from the account's plan.
+    // Current-month conversation activity — pooled at the account level.
     const plan = await planForBusiness(ctx, business._id);
     const usage = business.accountId
       ? await ctx.db
@@ -80,10 +79,6 @@ export const overview = query({
       conversationsThisWeek,
       conversationsThisMonth,
       conversationCap: conversationCap(plan),
-      smsThisMonth: usage?.sms ?? 0,
-      smsCap: smsCap(plan),
-      emailThisMonth: usage?.email ?? 0,
-      emailCap: emailCap(plan),
       openLeads,
       wonLeads: byStatus.won,
       totalLeads,

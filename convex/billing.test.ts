@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -88,33 +88,4 @@ test("clearSubscription flags canceled and pauses a live business", async () => 
   expect(account.stripeSubscriptionId).toBeUndefined();
   const business = (await t.run((ctx) => ctx.db.get(businessId)))!;
   expect(business.status).toBe("paused");
-});
-
-// -----------------------------------------------------------------------------
-// Email hard cap (metered, no pack lift under the connector model)
-// -----------------------------------------------------------------------------
-
-test("email cap is the plan cap and reports over once passed", async () => {
-  const t = convexTest(schema, modules);
-  const { as, businessId, accountId } = await seed(t, "mail", "eeeeee", "starter");
-  const period = new Date().toISOString().slice(0, 7);
-
-  // Sit exactly at Starter's 2,500 email cap.
-  await t.run((ctx) =>
-    ctx.db.insert("usageCounters", {
-      accountId,
-      period,
-      conversations: 0,
-      email: 2500,
-    }),
-  );
-  const status = await t.query(internal.usage.emailCapStatus, {
-    businessId,
-    period,
-  });
-  expect(status.cap).toBe(2500);
-  expect(status.over).toBe(true);
-
-  const usage = await as.query(api.tiers.planUsage, { slug: "mail" });
-  expect(usage.emails.cap).toBe(2500);
 });

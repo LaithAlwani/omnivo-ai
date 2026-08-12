@@ -57,7 +57,6 @@ import type * as resend from "../resend.js";
 import type * as services from "../services.js";
 import type * as team from "../team.js";
 import type * as tiers from "../tiers.js";
-import type * as usage from "../usage.js";
 
 import type {
   ApiFromModules,
@@ -115,7 +114,6 @@ declare const fullApi: ApiFromModules<{
   services: typeof services;
   team: typeof team;
   tiers: typeof tiers;
-  usage: typeof usage;
 }>;
 
 /**
