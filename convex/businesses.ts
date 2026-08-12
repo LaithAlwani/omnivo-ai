@@ -280,6 +280,7 @@ export const updateBranding = mutation({
     branding: v.object({
       primaryColor: v.string(),
       accentColor: v.string(),
+      textColor: v.optional(v.string()),
       position: v.union(v.literal("left"), v.literal("right")),
       assistantName: v.string(),
       welcomeMsg: v.string(),
@@ -478,6 +479,7 @@ export const configForBusiness = internalQuery({
       welcomeMsg: v.string(),
       primaryColor: v.string(),
       accentColor: v.string(),
+      textColor: v.string(),
       position: v.union(v.literal("left"), v.literal("right")),
       chatIcon: v.union(v.string(), v.null()),
       whiteLabel: v.boolean(),
@@ -497,6 +499,7 @@ export const configForBusiness = internalQuery({
       welcomeMsg: b.welcomeMsg,
       primaryColor: b.primaryColor,
       accentColor: b.accentColor,
+      textColor: b.textColor ?? "#ffffff",
       position: b.position,
       chatIcon: b.chatIcon ?? null,
       whiteLabel: whiteLabelEnabled(plan),

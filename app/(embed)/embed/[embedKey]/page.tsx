@@ -12,6 +12,7 @@ type Config = {
   welcomeMsg: string;
   primaryColor: string;
   accentColor: string;
+  textColor: string;
   position: "left" | "right";
   chatIcon: string | null;
   whiteLabel: boolean;
@@ -102,13 +103,16 @@ export default function EmbedWidget() {
   }
 
   const brand = config?.primaryColor ?? "#111827";
+  // Text/icon color drawn on the brand color — chosen by the tenant so a light
+  // primary stays legible (defaults to white).
+  const ink = config?.textColor ?? "#ffffff";
 
   return (
     <div className="flex h-dvh flex-col bg-white text-gray-900">
       {/* Header */}
       <header
-        className="flex items-center justify-between px-4 py-3 text-white"
-        style={{ backgroundColor: brand }}
+        className="flex items-center justify-between px-4 py-3"
+        style={{ backgroundColor: brand, color: ink }}
       >
         <div className="flex items-center gap-2 min-w-0">
           <span aria-hidden className="text-lg leading-none">
@@ -128,7 +132,8 @@ export default function EmbedWidget() {
         <button
           onClick={close}
           aria-label="Close chat"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/15"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-black/10"
+          style={{ color: ink }}
         >
           <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
             <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
@@ -148,11 +153,13 @@ export default function EmbedWidget() {
           >
             <div
               className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
-                m.role === "user"
-                  ? "text-white"
-                  : "bg-gray-100 text-gray-800"
+                m.role === "user" ? "" : "bg-gray-100 text-gray-800"
               }`}
-              style={m.role === "user" ? { backgroundColor: brand } : undefined}
+              style={
+                m.role === "user"
+                  ? { backgroundColor: brand, color: ink }
+                  : undefined
+              }
             >
               {m.content}
             </div>
@@ -189,8 +196,8 @@ export default function EmbedWidget() {
             onClick={send}
             disabled={sending || !draft.trim() || config === null}
             aria-label="Send"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white transition-opacity disabled:opacity-40"
-            style={{ backgroundColor: brand }}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full transition-opacity disabled:opacity-40"
+            style={{ backgroundColor: brand, color: ink }}
           >
             <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
               <path d="M3 10L17 3l-4 14-3-6-7-1z" strokeLinecap="round" strokeLinejoin="round" />

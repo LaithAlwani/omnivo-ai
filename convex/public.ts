@@ -92,6 +92,7 @@ export const config = action({
     welcomeMsg: string;
     primaryColor: string;
     accentColor: string;
+    textColor: string;
     position: "left" | "right";
     chatIcon: string | null;
     whiteLabel: boolean;

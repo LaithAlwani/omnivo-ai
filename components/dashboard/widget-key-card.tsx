@@ -35,6 +35,7 @@ export function WidgetKeyCard() {
     `<script src="${host || "https://app.your-domain.com"}/widget.js"\n` +
     `  data-embed-key="${key ?? `ek_${b.embedKeyPrefix}.YOUR_KEY`}"\n` +
     `  data-color="${b.branding.primaryColor}"\n` +
+    `  data-text-color="${b.branding.textColor ?? "#ffffff"}"\n` +
     `  data-position="${b.branding.position}"\n` +
     `  async></script>`;
 

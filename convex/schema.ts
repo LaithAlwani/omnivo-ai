@@ -113,6 +113,9 @@ export default defineSchema({
       logoStorageId: v.optional(v.id("_storage")),
       primaryColor: v.string(),
       accentColor: v.string(),
+      // Text/icon color drawn ON the primary color (header, bubbles, launcher).
+      // Optional — defaults to white where read, so a light primary stays legible.
+      textColor: v.optional(v.string()),
       chatIcon: v.optional(v.string()),
       position: v.union(v.literal("left"), v.literal("right")),
       assistantName: v.string(),

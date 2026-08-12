@@ -14,6 +14,7 @@ import { EmailDomainCard } from "@/components/dashboard/email-domain-card";
 type Branding = {
   primaryColor: string;
   accentColor: string;
+  textColor: string;
   position: "left" | "right";
   assistantName: string;
   welcomeMsg: string;
@@ -49,6 +50,7 @@ export default function BrandingPage() {
   const [form, setForm] = useState<Branding>({
     primaryColor: b.branding.primaryColor,
     accentColor: b.branding.accentColor,
+    textColor: b.branding.textColor ?? "#ffffff",
     position: b.branding.position,
     assistantName: b.branding.assistantName,
     welcomeMsg: b.branding.welcomeMsg,
@@ -153,6 +155,22 @@ export default function BrandingPage() {
             </Field>
           </div>
 
+          <Field label="Text color" hint="text & icons shown on the primary color">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={form.textColor}
+                onChange={(e) => set("textColor", e.target.value)}
+                className="h-9 w-9 shrink-0 cursor-pointer rounded-lg border border-line-strong"
+              />
+              <input
+                className={`${inputCls} max-w-[calc(50%-0.5rem)]`}
+                value={form.textColor}
+                onChange={(e) => set("textColor", e.target.value)}
+              />
+            </div>
+          </Field>
+
           <Field label="Bubble position">
             <div className="inline-flex rounded-lg border border-line-strong p-1">
               {(["left", "right"] as const).map((pos) => (
@@ -229,9 +247,9 @@ function DangerZone({ slug, name }: { slug: string; name: string }) {
       <h2 className="font-display text-xl text-bone">Danger zone</h2>
       <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted">
         Permanently delete <span className="text-bone">{name}</span> and
-        everything in it — team members, bookings, leads, services, knowledge,
-        integrations, calendars, and all history. Other members lose access and
-        the embedded assistant stops working. This cannot be undone.
+        everything in it — team members, leads, services, knowledge,
+        integrations, and all history. Other members lose access and the
+        embedded assistant stops working. This cannot be undone.
       </p>
 
       {!open ? (
@@ -288,12 +306,12 @@ function WidgetPreview({ branding }: { branding: Branding }) {
         <div className="w-full max-w-[17rem] overflow-hidden rounded-2xl border border-line-strong bg-surface shadow-xl">
           <div
             className="flex items-center gap-2 px-4 py-3"
-            style={{ background: branding.primaryColor }}
+            style={{ background: branding.primaryColor, color: branding.textColor }}
           >
-            <span className="grid h-6 w-6 place-items-center rounded-full bg-white/20 text-xs font-semibold text-white">
+            <span className="grid h-6 w-6 place-items-center rounded-full bg-black/15 text-xs font-semibold">
               {(branding.assistantName || "A").charAt(0).toUpperCase()}
             </span>
-            <span className="text-sm font-medium text-white">
+            <span className="text-sm font-medium">
               {branding.assistantName || "Assistant"}
             </span>
           </div>
@@ -312,9 +330,9 @@ function WidgetPreview({ branding }: { branding: Branding }) {
         {/* Bubble */}
         <span
           className="grid h-14 w-14 place-items-center rounded-full shadow-lg"
-          style={{ background: branding.primaryColor }}
+          style={{ background: branding.primaryColor, color: branding.textColor }}
         >
-          <svg viewBox="0 0 24 24" className="h-6 w-6 text-white" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M4 5.5h16v10H9l-4 3.5v-3.5H4z" strokeLinejoin="round" />
           </svg>
         </span>

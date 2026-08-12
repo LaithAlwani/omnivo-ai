@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Trim the X-Powered-By response header — no need to advertise the framework.
   poweredByHeader: false,
+  // Enables the unauthorized()/forbidden() navigation helpers so a thrown
+  // `unauthorized()` renders app/unauthorized.tsx with a real 401 status.
+  experimental: { authInterrupts: true },
   async headers() {
     return [
       {

@@ -14,6 +14,7 @@
     return;
   }
   var color = script.getAttribute("data-color") || "#111827";
+  var textColor = script.getAttribute("data-text-color") || "#fff";
   var position = script.getAttribute("data-position") === "left" ? "left" : "right";
   var appOrigin = new URL(script.src).origin;
 
@@ -27,7 +28,7 @@
   launcher.style.cssText =
     "position:fixed;bottom:20px;" + side +
     "width:56px;height:56px;border-radius:9999px;border:none;cursor:pointer;" +
-    "background:" + color + ";color:#fff;box-shadow:0 8px 30px rgba(0,0,0,.25);" +
+    "background:" + color + ";color:" + textColor + ";box-shadow:0 8px 30px rgba(0,0,0,.25);" +
     "z-index:" + Z + ";display:flex;align-items:center;justify-content:center;" +
     "transition:transform .15s ease;";
   launcher.innerHTML =
