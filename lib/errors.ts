@@ -3,9 +3,9 @@ import { ConvexError } from "convex/values";
 // Client-side reader for the structured errors thrown by convex/lib/errors.ts.
 // Turns any caught value into a { code, message } the UI can show.
 
-export type UserError = { code: string; message: string };
+type UserError = { code: string; message: string };
 
-export function toUserError(err: unknown): UserError {
+function toUserError(err: unknown): UserError {
   if (err instanceof ConvexError) {
     const data = err.data as unknown;
     if (data && typeof data === "object" && "message" in data) {

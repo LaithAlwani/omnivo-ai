@@ -3,7 +3,6 @@ import { convexTest, type TestConvex } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import type { Id } from "./_generated/dataModel";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -23,20 +22,6 @@ async function selfTenant(t: TestConvex<typeof schema>) {
     embedKey: "ek_pp.x",
   });
   return { owner, as, businessId };
-}
-
-async function makeSuperadmin(t: TestConvex<typeof schema>) {
-  const user = await t.run((ctx) =>
-    ctx.db.insert("users", { email: "op@omnivo.ai" }),
-  );
-  await t.run((ctx) =>
-    ctx.db.insert("platformAdmins", {
-      userId: user,
-      role: "superadmin",
-      createdAt: 0,
-    }),
-  );
-  return { user, as: t.withIdentity({ subject: `${user}|s` }) };
 }
 
 test("new self-serve business starts draft + self", async () => {

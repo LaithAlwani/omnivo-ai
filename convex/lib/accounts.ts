@@ -1,7 +1,7 @@
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Plan } from "./tiers";
-import { projectLimit, locationLimit } from "./tiers";
+import { locationLimit } from "./tiers";
 
 // -----------------------------------------------------------------------------
 // Account resolution — the bridge from a project (business) to its owning
@@ -34,13 +34,6 @@ export async function planForBusiness(
     if (account) return account.plan;
   }
   return business?.tier ?? "starter";
-}
-
-/** The account's effective project limit (override wins over the plan default). */
-export function accountProjectLimit(account: Doc<"accounts">): number | null {
-  return account.projectLimitOverride !== undefined
-    ? account.projectLimitOverride
-    : projectLimit(account.plan);
 }
 
 /** The account's effective location limit: an explicit override wins; otherwise

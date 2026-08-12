@@ -282,9 +282,3 @@ export const overageRates = [
   },
 ] as const;
 
-export const seo = {
-  title:
-    "Omnivo AI — the AI layer that drives the tools you already run",
-  description:
-    "An AI assistant that answers, books, and captures leads by driving your existing booking, CRM, and calendar. We install and connect it for you.",
-};

@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 
 // The current business + the caller's role in it, resolved once in the shell
 // layout and shared with every dashboard page.
-export type BusinessWithRole =
+type BusinessWithRole =
   FunctionReturnType<typeof api.businesses.listMine>[number];
 
 const BusinessContext = createContext<BusinessWithRole | null>(null);

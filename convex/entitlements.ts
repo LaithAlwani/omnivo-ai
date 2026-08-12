@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireMemberBySlug } from "./lib/authz";
@@ -115,34 +115,5 @@ export const setModule = mutation({
       });
     }
     return null;
-  },
-});
-
-// -----------------------------------------------------------------------------
-// Migration: seed a tenantFeatures row per project. To preserve current widget
-// behavior, default Booking + Lead Qualification on (SMS Automation on where the
-// account plan historically included SMS — i.e. every plan today).
-// -----------------------------------------------------------------------------
-export const backfillFeatures = internalMutation({
-  args: {},
-  returns: v.object({ seeded: v.number() }),
-  handler: async (ctx) => {
-    let seeded = 0;
-    const businesses = await ctx.db.query("businesses").collect();
-    for (const business of businesses) {
-      const existing = await ctx.db
-        .query("tenantFeatures")
-        .withIndex("by_business", (q) => q.eq("businessId", business._id))
-        .unique();
-      if (existing) continue;
-      await ctx.db.insert("tenantFeatures", {
-        businessId: business._id,
-        ...DEFAULT_ENTITLEMENTS,
-        bookingEnabled: true,
-        leadQualificationEnabled: true,
-      });
-      seeded++;
-    }
-    return { seeded };
   },
 });

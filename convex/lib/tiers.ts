@@ -110,12 +110,6 @@ export function locationLimit(plan: Plan): number | null {
   return TIER_LIMITS[plan].locationLimit;
 }
 
-/** Projects per account — always 1 now (one business per account). Kept for the
- *  single legacy call site. */
-export function projectLimit(_plan: Plan): number | null {
-  return 1;
-}
-
 /** White-label (remove Omnivo attribution) — Premium and up. */
 export function whiteLabelEnabled(plan: Plan): boolean {
   return TIER_LIMITS[plan].whiteLabel;

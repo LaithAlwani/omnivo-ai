@@ -1,5 +1,3 @@
-import type { BookingCapability } from "./types";
-
 // -----------------------------------------------------------------------------
 // Generic webhook booking provider (pure). The tenant points Omnivo at two of
 // their own endpoints; we shape the availability request and the booking payload
@@ -7,12 +5,6 @@ import type { BookingCapability } from "./types";
 // is the first provider a self-serve tenant can configure alone (no Omnivo-held
 // secret). Named vendors (Square/Calendly/…) become sibling modules in Phase G.
 // -----------------------------------------------------------------------------
-
-/** A webhook provider can read availability and write a booking (no cancel). */
-export const WEBHOOK_BOOKING_CAPS: Set<BookingCapability> = new Set([
-  "read",
-  "write",
-]);
 
 export type ProviderSlot = { start: number; end?: number };
 

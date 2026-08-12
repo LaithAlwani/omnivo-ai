@@ -71,29 +71,6 @@ async function capStatus(
   return { over: cap !== null && used >= cap, used, cap };
 }
 
-/** Bump this month's SMS counter by one (called after a successful send). */
-export const recordSms = internalMutation({
-  args: { businessId: v.id("businesses") },
-  returns: v.null(),
-  handler: async (ctx, { businessId }) => {
-    await bump(ctx, businessId, "sms");
-    return null;
-  },
-});
-
-/** Whether the account has hit its monthly SMS cap. `period` passed in so this
- *  stays wall-clock-free. */
-export const smsCapStatus = internalQuery({
-  args: { businessId: v.id("businesses"), period: v.string() },
-  returns: v.object({
-    over: v.boolean(),
-    used: v.number(),
-    cap: v.union(v.number(), v.null()),
-  }),
-  handler: async (ctx, { businessId, period }) =>
-    await capStatus(ctx, businessId, period, "sms"),
-});
-
 /** Bump this month's email counter by one (platform-sent emails only). */
 export const recordEmail = internalMutation({
   args: { businessId: v.id("businesses") },

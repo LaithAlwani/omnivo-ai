@@ -45,10 +45,6 @@ const CFG = {
   },
 } as const;
 
-export function providerLabel(provider: Provider): string {
-  return CFG[provider].label;
-}
-
 function env(name: string): string {
   const v = process.env[name];
   if (!v) appError("CONFIG", `${name} is not set on the Convex deployment.`);

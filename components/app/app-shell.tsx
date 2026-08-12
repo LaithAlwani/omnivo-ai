@@ -10,10 +10,10 @@ import { api } from "@/convex/_generated/api";
 import { Logo } from "@/components/layout/logo";
 import { Scroller } from "@/components/ui/scroller";
 
-export type PlatformRole = "support" | "superadmin";
+type PlatformRole = "support" | "superadmin";
 
 /** Human label for a platform operator role. */
-export function platformRoleLabel(role: PlatformRole): string {
+function platformRoleLabel(role: PlatformRole): string {
   return role === "superadmin" ? "Platform Super Admin" : "Platform Support";
 }
 

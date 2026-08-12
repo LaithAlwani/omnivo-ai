@@ -1,10 +1,5 @@
 import { v } from "convex/values";
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query,
-} from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireMemberBySlug } from "./lib/authz";
@@ -203,57 +198,5 @@ export const remove = mutation({
     }
     await ctx.db.delete(args.locationId);
     return null;
-  },
-});
-
-// -----------------------------------------------------------------------------
-// Migration: seed one default location per project and backfill staff + bookings
-// onto it. Idempotent.
-// -----------------------------------------------------------------------------
-export const backfillLocations = internalMutation({
-  args: {},
-  returns: v.object({
-    locationsSeeded: v.number(),
-    staffLinked: v.number(),
-    bookingsLinked: v.number(),
-  }),
-  handler: async (ctx) => {
-    let locationsSeeded = 0;
-    let staffLinked = 0;
-    let bookingsLinked = 0;
-
-    const businesses = await ctx.db.query("businesses").collect();
-    for (const business of businesses) {
-      const before = await ctx.db
-        .query("locations")
-        .withIndex("by_business", (q) => q.eq("businessId", business._id))
-        .collect();
-      const locationId = await ensureDefaultLocation(ctx, business._id);
-      if (before.length === 0) locationsSeeded++;
-
-      const staff = await ctx.db
-        .query("staff")
-        .withIndex("by_business", (q) => q.eq("businessId", business._id))
-        .collect();
-      for (const s of staff) {
-        if (s.locationId) continue;
-        await ctx.db.patch(s._id, { locationId });
-        staffLinked++;
-      }
-
-      const bookings = await ctx.db
-        .query("bookings")
-        .withIndex("by_business_start", (q) => q.eq("businessId", business._id))
-        .collect();
-      for (const bk of bookings) {
-        if (bk.locationId) continue;
-        // A booking's location follows its staff's location.
-        const staffLoc = staff.find((s) => s._id === bk.staffId)?.locationId;
-        await ctx.db.patch(bk._id, { locationId: staffLoc ?? locationId });
-        bookingsLinked++;
-      }
-    }
-
-    return { locationsSeeded, staffLinked, bookingsLinked };
   },
 });

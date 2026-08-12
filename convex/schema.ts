@@ -54,7 +54,6 @@ export default defineSchema({
   accounts: defineTable({
     ownerUserId: v.id("users"),
     plan: planValidator,
-    projectLimitOverride: v.optional(v.union(v.number(), v.null())),
     locationLimitOverride: v.optional(v.union(v.number(), v.null())),
     // Extra locations bought beyond the plan's included count (a paid Stripe
     // subscription add-on). Effective cap = plan's locationLimit + paidLocations.

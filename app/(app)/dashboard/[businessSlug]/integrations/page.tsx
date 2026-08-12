@@ -90,7 +90,7 @@ type Conn = {
   hasSecret: boolean;
 } | null;
 
-function useConnActions(slug: string) {
+function useConnActions() {
   const save = useAction(api.integrationsNode.save);
   const test = useAction(api.integrationsNode.test);
   const remove = useMutation(api.integrations.remove);
@@ -121,7 +121,7 @@ function BookingCard({
   canEdit: boolean;
   current: Conn;
 }) {
-  const { save, test, remove } = useConnActions(slug);
+  const { save, test, remove } = useConnActions();
   const cfg = (current?.config ?? {}) as {
     availabilityUrl?: string;
     bookingUrl?: string;
@@ -240,7 +240,7 @@ function WebhookCard({
   blurb: string;
   current: Conn;
 }) {
-  const { save, test, remove } = useConnActions(slug);
+  const { save, test, remove } = useConnActions();
   const cfg = (current?.config ?? {}) as { url?: string };
   const [url, setUrl] = useState(cfg.url ?? "");
   const [secret, setSecret] = useState("");
