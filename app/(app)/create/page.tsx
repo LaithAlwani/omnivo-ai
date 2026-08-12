@@ -159,12 +159,13 @@ export default function CreateBusinessPage() {
               </svg>
             </span>
             <h1 className="mt-5 font-display text-3xl text-bone">
-              {name.trim()} is live.
+              {name.trim()} is ready.
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-muted">
-              Your assistant is set up and ready. Copy your embed key now — for
-              security it won’t be shown again (you can rotate it later from the
-              dashboard).
+              Your assistant is set up. Copy your embed key now — for security it
+              won’t be shown again (you can rotate it later from the dashboard).
+              One step left: add your website’s domain and finish the go-live
+              checklist to start serving visitors.
             </p>
             <div className="mt-6 rounded-xl border border-ember/40 bg-ember-soft p-5">
               <p className="font-mono text-xs uppercase tracking-wider text-ember">
@@ -176,16 +177,16 @@ export default function CreateBusinessPage() {
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href={`/dashboard/${result.slug}`}
+                href={`/dashboard/${result.slug}/go-live`}
                 className="inline-flex h-11 items-center justify-center rounded-full bg-ember px-6 text-sm font-medium text-[#160b04] transition-colors hover:bg-flare"
               >
-                Go to {name.trim()} →
+                Finish setup — go live →
               </Link>
               <Link
-                href="/dashboard"
+                href={`/dashboard/${result.slug}`}
                 className="inline-flex h-11 items-center justify-center rounded-full border border-line-strong px-6 text-sm text-bone-dim transition-colors hover:border-ember/50 hover:text-bone"
               >
-                All businesses
+                Go to dashboard
               </Link>
             </div>
           </div>

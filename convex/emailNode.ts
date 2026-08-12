@@ -203,6 +203,62 @@ export const sendConnectionDegraded = internalAction({
   },
 });
 
+// --- Lead fallback (no CRM connected) ----------------------------------------
+
+/** When a lead is captured but no outbound CRM is connected, email it to the
+ *  responsible party (owner, or installer for installer-managed tenants) so it's
+ *  never lost — with a nudge to connect a CRM, or have LA Digital set one up.
+ *  Not cap-gated: when there's no CRM this is the only place the lead lands. */
+export const sendLeadFallback = internalAction({
+  args: {
+    to: v.string(),
+    businessName: v.string(),
+    slug: v.string(),
+    name: v.string(),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    message: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (_ctx, args) => {
+    // No transport configured (e.g. local/tests) → nothing to send; skip quietly.
+    if (!process.env.SMTP_HOST) return null;
+
+    const base = process.env.SITE_URL ?? "http://localhost:3000";
+    const connectUrl = `${base}/dashboard/${args.slug}/integrations`;
+
+    const rows: [string, string][] = [["Name", args.name]];
+    if (args.email) rows.push(["Email", args.email]);
+    if (args.phone) rows.push(["Phone", args.phone]);
+    if (args.message) rows.push(["Message", args.message]);
+
+    const detailsText = rows.map(([k, val]) => `${k}: ${val}`).join("\n");
+    const nudgeText = `This lead isn't being saved to a CRM yet. Connect one to route new leads automatically: ${connectUrl}\n\nPrefer it done for you? LA Digital can set up a CRM and booking system — just reply to this email.`;
+
+    // Best-effort: a fallback notification failing must never crash the capture
+    // path that scheduled it (mirrors the demo-request client copy).
+    try {
+      await sendEmail({
+        to: args.to,
+        replyTo: supportAddress(),
+        subject: `New lead for ${args.businessName}: ${args.name}`,
+        text: `Your Omnivo assistant just captured a new lead.\n\n${detailsText}\n\n${nudgeText}\n\nOmnivo AI`,
+        html: emailShell(
+          `<h1 style="margin:16px 0 8px;font-size:20px;color:#ece4d8;">New lead for ${escapeHtml(args.businessName)}</h1>
+         <p style="margin:0 0 12px;font-size:14px;line-height:1.55;color:#b8ac9c;">Your Omnivo assistant just captured a lead:</p>
+         <table style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#ece4d8;">
+           ${rows.map(([k, val]) => `<tr><td style="padding:2px 12px 2px 0;color:#8c8175;">${escapeHtml(k)}</td><td>${escapeHtml(val)}</td></tr>`).join("")}
+         </table>
+         <p style="margin:0;font-size:13px;line-height:1.55;color:#b8ac9c;">This lead isn't being saved to a CRM yet. <a href="${connectUrl}" style="color:#ff5c1a;">Connect one</a> to route new leads automatically — or reply and LA Digital can set up a CRM and booking system for you.</p>`,
+        ),
+      });
+    } catch (err) {
+      console.error("lead-fallback email failed:", err);
+    }
+    return null;
+  },
+});
+
 // --- Demo request (marketing "Book a demo" form) ------------------------------
 
 /** Where new demo requests are routed. Overridable per-deployment. */

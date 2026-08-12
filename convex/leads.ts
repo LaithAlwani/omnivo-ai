@@ -1,10 +1,34 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { requireMemberBySlug } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { entitlementsFor } from "./entitlements";
 import { leadStatusValidator, contactSourceValidator } from "./schema";
+
+/** The party notified when a captured lead has no CRM to land in: the installer
+ *  for installer-managed tenants, otherwise the business owner. Returns their
+ *  email, or null when none can be resolved. Mirrors the health-alert routing. */
+async function leadFallbackRecipient(
+  ctx: MutationCtx,
+  business: Doc<"businesses">,
+): Promise<string | null> {
+  let userId = null as Doc<"users">["_id"] | null;
+  if (business.provisioning === "installer" && business.installerId) {
+    userId = business.installerId;
+  } else {
+    const owner = await ctx.db
+      .query("memberships")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .filter((q) => q.eq(q.field("role"), "owner"))
+      .first();
+    userId = owner ? owner.userId : null;
+  }
+  const user = userId ? await ctx.db.get(userId) : null;
+  return user?.email ?? null;
+}
 
 // -----------------------------------------------------------------------------
 // Leads CRM — captured interest with a simple pipeline (new → contacted →
@@ -159,9 +183,22 @@ export const captureForBusiness = internalMutation({
       source: args.source,
       updatedAt: Date.now(),
     });
-    // Integrations: push the new lead to any configured outbound CRM.
+    // Route the lead. If an outbound CRM is connected, push it there and let the
+    // CRM's own alerting fire — Omnivo sends nothing (no double-messaging). If
+    // not, email the responsible party so the lead is never lost, with a nudge
+    // to connect a CRM (or have LA Digital set one up).
     const entitlements = await entitlementsFor(ctx, args.businessId);
-    if (entitlements.integrationsEnabled) {
+    const outbound = entitlements.integrationsEnabled
+      ? await ctx.db
+          .query("integrations")
+          .withIndex("by_business_kind", (q) =>
+            q.eq("businessId", args.businessId).eq("kind", "crmOutbound"),
+          )
+          .collect()
+      : [];
+    const hasOutboundCrm = outbound.some((r) => r.active);
+
+    if (hasOutboundCrm) {
       await ctx.scheduler.runAfter(0, internal.integrationsNode.dispatch, {
         businessId: args.businessId,
         event: {
@@ -175,6 +212,19 @@ export const captureForBusiness = internalMutation({
           },
         },
       });
+    } else {
+      const to = await leadFallbackRecipient(ctx, business);
+      if (to) {
+        await ctx.scheduler.runAfter(0, internal.emailNode.sendLeadFallback, {
+          to,
+          businessName: business.name,
+          slug: business.slug,
+          name: args.name.trim() || "Unknown",
+          email: args.email?.trim() || undefined,
+          phone: args.phone?.trim() || undefined,
+          message: args.message?.trim() || undefined,
+        });
+      }
     }
     return leadId;
   },

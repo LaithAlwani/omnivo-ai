@@ -117,3 +117,55 @@ test("integrations — dispatch with no targets is a safe no-op", async () => {
     }),
   ).resolves.toBeNull();
 });
+
+/** Names of functions currently on the scheduler queue (runAfter targets). */
+async function scheduledNames(t: TestConvex<typeof schema>): Promise<string[]> {
+  const rows = await t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect(),
+  );
+  return rows.map((r) => r.name);
+}
+
+// No CRM connected → the captured lead is emailed to the owner as a fallback.
+test("lead capture — no CRM connected emails the owner the lead", async () => {
+  const t = convexTest(schema, modules);
+  const { businessId } = await project(t);
+
+  await t.mutation(internal.leads.captureForBusiness, {
+    businessId,
+    source: "assistant",
+    name: "Dana Lead",
+    email: "dana@x.com",
+  });
+
+  const names = await scheduledNames(t);
+  expect(names.some((n) => n.includes("sendLeadFallback"))).toBe(true);
+  expect(names.some((n) => n.includes("dispatch"))).toBe(false);
+});
+
+// An active outbound CRM → dispatch to it, no fallback email (no double-send).
+test("lead capture — connected CRM dispatches, no fallback email", async () => {
+  const t = convexTest(schema, modules);
+  const { businessId } = await project(t);
+  await t.run((ctx) =>
+    ctx.db.insert("integrations", {
+      businessId,
+      kind: "crmOutbound" as const,
+      provider: "webhook" as const,
+      config: { url: "https://crm.example/hook" },
+      active: true,
+      verified: false,
+    }),
+  );
+
+  await t.mutation(internal.leads.captureForBusiness, {
+    businessId,
+    source: "assistant",
+    name: "Dana Lead",
+    email: "dana@x.com",
+  });
+
+  const names = await scheduledNames(t);
+  expect(names.some((n) => n.includes("dispatch"))).toBe(true);
+  expect(names.some((n) => n.includes("sendLeadFallback"))).toBe(false);
+});
