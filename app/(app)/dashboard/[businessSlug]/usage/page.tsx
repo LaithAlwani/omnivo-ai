@@ -36,20 +36,18 @@ export default function UsagePage() {
 
   const createCheckout = useAction(api.billing.createCheckoutSession);
   const createPortal = useAction(api.billing.createPortalSession);
-  const createPack = useAction(api.billing.createPackCheckout);
 
-  const [cadence, setCadence] = useState<"monthly" | "annual">("monthly");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const params = useSearchParams();
   const checkoutFlag = params.get("checkout");
-  const packFlag = params.get("pack");
 
+  const installerManaged = b.provisioning === "installer";
   const hasSubscription = account?.billing.hasSubscription ?? false;
   const subStatus = account?.billing.subscriptionStatus ?? null;
 
-  // All billing actions return a URL we redirect to; leave `busy` set on success
+  // Billing actions return a URL we redirect to; leave `busy` set on success
   // since the page is navigating away.
   async function go(key: string, run: () => Promise<{ url: string }>) {
     if (!isOwner) return;
@@ -69,12 +67,9 @@ export default function UsagePage() {
       createCheckout({
         slug: b.slug,
         plan: tier as "starter" | "professional" | "premium",
-        cadence,
       }),
     );
   const manageBilling = () => go("portal", () => createPortal({ slug: b.slug }));
-  const buyPack = (pack: "credits" | "emails" | "sms") =>
-    go(`pack:${pack}`, () => createPack({ slug: b.slug, pack }));
 
   if (data === undefined) {
     return <div className="text-sm text-faint">Loading…</div>;
@@ -94,12 +89,7 @@ export default function UsagePage() {
           a moment.
         </div>
       )}
-      {packFlag === "success" && (
-        <div className="mt-4 rounded-xl border border-ember/40 bg-ember-soft/40 px-4 py-3 text-sm text-bone-dim">
-          Pack purchased — your added allowance appears here in a moment.
-        </div>
-      )}
-      {(checkoutFlag === "cancel" || packFlag === "cancel") && (
+      {checkoutFlag === "cancel" && (
         <div className="mt-4 rounded-xl border border-line bg-surface/50 px-4 py-3 text-sm text-muted">
           Checkout canceled — no charge was made.
         </div>
@@ -124,9 +114,11 @@ export default function UsagePage() {
             {plan?.name ?? data.tier}
           </div>
           <div className="mt-0.5 text-xs text-faint">
-            {hasSubscription
-              ? `Subscription ${subStatus ?? "active"}`
-              : "No active subscription — you're on a free trial"}
+            {installerManaged
+              ? "Billed through your installer"
+              : hasSubscription
+                ? `Subscription ${subStatus ?? "active"}`
+                : "No active subscription"}
           </div>
         </div>
         {plan && (
@@ -193,18 +185,8 @@ export default function UsagePage() {
                 You&rsquo;ve used all your included AI credits. Extra usage is
                 billed as overage — about{" "}
                 <span className="text-bone">{credits(c.overageCents)} credits</span>{" "}
-                over so far this period. Add a credit pack to keep going for less.
+                over so far this period.
               </p>
-            )}
-
-            {isOwner && !unlimited && (
-              <button
-                onClick={() => buyPack("credits")}
-                disabled={busy !== null}
-                className="mt-4 h-9 rounded-full bg-ember px-4 text-sm font-medium text-[#160b04] transition-colors hover:bg-flare disabled:opacity-50"
-              >
-                {busy === "pack:credits" ? "Opening…" : "Buy credit pack"}
-              </button>
             )}
           </div>
         );
@@ -238,24 +220,6 @@ export default function UsagePage() {
             </p>
           );
         })()}
-        {isOwner && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              onClick={() => buyPack("emails")}
-              disabled={busy !== null}
-              className="h-9 rounded-full border border-line-strong px-4 text-sm font-medium text-bone transition-colors hover:border-ember disabled:opacity-50"
-            >
-              {busy === "pack:emails" ? "Opening…" : "Buy email bundle"}
-            </button>
-            <button
-              onClick={() => buyPack("sms")}
-              disabled={busy !== null}
-              className="h-9 rounded-full border border-line-strong px-4 text-sm font-medium text-bone transition-colors hover:border-ember disabled:opacity-50"
-            >
-              {busy === "pack:sms" ? "Opening…" : "Buy SMS bundle"}
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Included features */}
@@ -280,28 +244,20 @@ export default function UsagePage() {
 
       {/* Plan / billing */}
       <div className="mt-4 rounded-xl border border-line bg-surface/40 p-6">
-        <div className="flex items-center justify-between">
-          <div className="font-mono text-xs uppercase tracking-wider text-faint">
-            {hasSubscription ? "Manage subscription" : "Choose a plan"}
-          </div>
-          {!hasSubscription && (
-            <div className="flex items-center gap-1 rounded-full border border-line p-0.5 text-xs">
-              {(["monthly", "annual"] as const).map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setCadence(c)}
-                  className={`rounded-full px-3 py-1 transition-colors ${
-                    cadence === c ? "bg-ember text-[#160b04]" : "text-muted hover:text-bone"
-                  }`}
-                >
-                  {c === "monthly" ? "Monthly" : "Annual"}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="font-mono text-xs uppercase tracking-wider text-faint">
+          {installerManaged
+            ? "Billing"
+            : hasSubscription
+              ? "Manage subscription"
+              : "Choose a plan"}
         </div>
 
-        {hasSubscription ? (
+        {installerManaged ? (
+          <p className="mt-1 text-sm text-muted">
+            Your installer handles billing for this account — reach out to them
+            for plan changes or invoices.
+          </p>
+        ) : hasSubscription ? (
           <>
             <p className="mt-1 text-sm text-muted">
               Change your plan, update your payment method, download invoices, or
@@ -318,13 +274,12 @@ export default function UsagePage() {
         ) : (
           <>
             <p className="mt-1 text-sm text-muted">
-              Each tier bundles more modules, higher limits, and more locations.
-              Subscribing activates it right away.
+              Each tier bundles more capabilities, higher limits, and more
+              locations. Subscribing activates it right away.
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               {pricingTiers.map((t) => {
                 const current = t.key === b.tier;
-                const price = cadence === "annual" ? t.annualMonthly : t.monthly;
                 return (
                   <div
                     key={t.key}
@@ -336,7 +291,9 @@ export default function UsagePage() {
                   >
                     <div className="font-display text-lg text-bone">{t.name}</div>
                     <div className="mt-0.5">
-                      <span className="font-display text-xl text-bone">${price}</span>
+                      <span className="font-display text-xl text-bone">
+                        ${t.monthly}
+                      </span>
                       <span className="text-xs text-faint">/mo</span>
                     </div>
                     <button
@@ -353,7 +310,7 @@ export default function UsagePage() {
           </>
         )}
 
-        {!isOwner && (
+        {!isOwner && !installerManaged && (
           <p className="mt-3 text-xs text-faint">
             Only the account owner can manage billing.
           </p>

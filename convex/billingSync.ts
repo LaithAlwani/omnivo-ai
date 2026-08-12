@@ -6,7 +6,6 @@ import { requireMemberBySlug } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { planValidator } from "./schema";
 import { syncEntitlementsToPlan } from "./entitlements";
-import { FOUNDING_SLOTS, usagePeriod, packGrant, type PackKey } from "./lib/tiers";
 
 // -----------------------------------------------------------------------------
 // Billing state sync — the DB-facing half of Stripe. `convex/billing.ts` (Node
@@ -15,8 +14,6 @@ import { FOUNDING_SLOTS, usagePeriod, packGrant, type PackKey } from "./lib/tier
 // The account (owner-level) is the subscription entity; usage is pooled per
 // account per "YYYY-MM".
 // -----------------------------------------------------------------------------
-
-const cadenceValidator = v.union(v.literal("monthly"), v.literal("annual"));
 
 /** Owner-authed billing context for a project — what checkout/portal need to
  *  create a Stripe session. Owner-only; throws otherwise. */
@@ -28,19 +25,11 @@ export const ownerBillingContext = internalQuery({
     const account = await ctx.db.get(business.accountId);
     if (!account) appError("NOT_FOUND", "Account not found.");
 
-    const founders = await ctx.db
-      .query("accounts")
-      .filter((q) => q.eq(q.field("foundingPartner"), true))
-      .collect();
-
     return {
       accountId: account._id,
       plan: account.plan,
-      cadence: account.billingCadence ?? "monthly",
       stripeCustomerId: account.stripeCustomerId ?? null,
       stripeSubscriptionId: account.stripeSubscriptionId ?? null,
-      foundingPartner: account.foundingPartner ?? false,
-      foundingSlotsLeft: Math.max(0, FOUNDING_SLOTS - founders.length),
       ownerEmail: (await ctx.db.get(account.ownerUserId))?.email ?? null,
     };
   },
@@ -116,38 +105,23 @@ async function resyncAccountEntitlements(
   }
 }
 
-/** Apply an active Stripe subscription to the account: plan, cadence, status,
- *  paid locations, founding flag, Stripe ids — then re-sync entitlements and
- *  activate the account's businesses. Drives `customer.subscription.created`
- *  and `.updated`. All fields are already resolved from the Stripe objects by
- *  the Node webhook handler. */
+/** Apply an active Stripe subscription to the account: plan, status, paid
+ *  locations, Stripe ids — then re-sync entitlements and resume any paused
+ *  business. Drives `customer.subscription.created` and `.updated`. Fields are
+ *  resolved from the Stripe objects by the Node webhook handler. */
 export const applySubscription = internalMutation({
   args: {
     accountId: v.id("accounts"),
     stripeSubscriptionId: v.string(),
     stripeCustomerId: v.optional(v.string()),
     plan: planValidator,
-    cadence: cadenceValidator,
     status: v.string(),
     paidLocations: v.number(),
-    founding: v.boolean(),
-    commitmentEndsAt: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const account = await ctx.db.get(args.accountId);
     if (!account) appError("NOT_FOUND", "Account not found.");
-
-    // Founding is capped at the first FOUNDING_SLOTS accounts; once granted it
-    // stays granted (locked-in discount).
-    let founding = account.foundingPartner ?? false;
-    if (args.founding && !founding) {
-      const founders = await ctx.db
-        .query("accounts")
-        .filter((q) => q.eq(q.field("foundingPartner"), true))
-        .collect();
-      if (founders.length < FOUNDING_SLOTS) founding = true;
-    }
 
     await ctx.db.patch(args.accountId, {
       stripeSubscriptionId: args.stripeSubscriptionId,
@@ -155,13 +129,8 @@ export const applySubscription = internalMutation({
         ? { stripeCustomerId: args.stripeCustomerId }
         : {}),
       plan: args.plan,
-      billingCadence: args.cadence,
       subscriptionStatus: args.status,
       paidLocations: args.paidLocations,
-      foundingPartner: founding,
-      ...(args.commitmentEndsAt !== undefined
-        ? { commitmentEndsAt: args.commitmentEndsAt }
-        : {}),
     });
 
     // Active/trialing subscription resumes a previously-paused business (billing
@@ -213,41 +182,6 @@ export const setSubscriptionStatus = internalMutation({
   returns: v.null(),
   handler: async (ctx, { accountId, status }) => {
     await ctx.db.patch(accountId, { subscriptionStatus: status });
-    return null;
-  },
-});
-
-/** Credit a completed one-time pack purchase to the current period's allowance
- *  (no rollover). Drives `checkout.session.completed` with mode="payment". */
-export const applyPackPurchase = internalMutation({
-  args: { accountId: v.id("accounts"), pack: v.string() },
-  returns: v.null(),
-  handler: async (ctx, { accountId, pack }) => {
-    const grant = packGrant(pack as PackKey);
-    const period = usagePeriod(Date.now());
-    const counter = await ctx.db
-      .query("usageCounters")
-      .withIndex("by_account_period", (q) =>
-        q.eq("accountId", accountId).eq("period", period),
-      )
-      .unique();
-    if (counter) {
-      await ctx.db.patch(counter._id, {
-        purchasedCreditCents:
-          (counter.purchasedCreditCents ?? 0) + grant.creditCents,
-        purchasedEmails: (counter.purchasedEmails ?? 0) + grant.emails,
-        purchasedSms: (counter.purchasedSms ?? 0) + grant.sms,
-      });
-    } else {
-      await ctx.db.insert("usageCounters", {
-        accountId,
-        period,
-        conversations: 0,
-        purchasedCreditCents: grant.creditCents,
-        purchasedEmails: grant.emails,
-        purchasedSms: grant.sms,
-      });
-    }
     return null;
   },
 });

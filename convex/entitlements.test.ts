@@ -91,7 +91,7 @@ test("entitlementsForPlan — bundles per tier", () => {
   const starter = entitlementsForPlan("starter");
   expect(starter.bookingEnabled).toBe(true);
   expect(starter.leadQualificationEnabled).toBe(true);
-  expect(starter.integrationsEnabled).toBe(false); // Integrations is Pro+
+  expect(starter.integrationsEnabled).toBe(true); // Connections are base now
 
   const premium = entitlementsForPlan("premium");
   expect(

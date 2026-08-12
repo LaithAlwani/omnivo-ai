@@ -1,17 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Button } from "@/components/ui/button";
 import {
   pricingTiers,
   pricingModules,
-  foundingInfo,
-  annualInfo,
   additionalLocationPrice,
   overageRates,
-  bundles,
   appHref,
 } from "@/lib/site-config";
 
@@ -27,7 +23,6 @@ function Dash() {
 }
 
 export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
-  const [annual, setAnnual] = useState(false);
   const num = (n: number) => n.toLocaleString();
 
   return (
@@ -47,51 +42,6 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
             className="mx-auto"
           />
         )}
-
-        {/* Founding Partner banner */}
-        <div className="mx-auto mt-10 max-w-2xl rounded-xl border border-ember/40 bg-ember-soft/40 p-5 text-center">
-          <p className="font-mono text-xs uppercase tracking-wider text-ember">
-            Founding Partner Pricing
-          </p>
-          <p className="mt-1 text-sm text-bone-dim">
-            The first {foundingInfo.slots} customers get{" "}
-            <span className="text-bone">{foundingInfo.discountPct}% off, locked in</span>{" "}
-            for as long as they stay — plus priority onboarding. Usage limits and
-            overages are unchanged.
-          </p>
-          <div className="mt-3 flex flex-wrap justify-center gap-x-6 gap-y-1 text-sm">
-            {pricingTiers.map((t) => (
-              <span key={t.key} className="text-muted">
-                {t.name}{" "}
-                <span className="text-bone">${t.founding}</span>
-                <span className="text-faint">/mo</span>
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Monthly / Annual toggle */}
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <button
-            onClick={() => setAnnual(false)}
-            className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
-              !annual ? "bg-surface text-bone" : "text-muted hover:text-bone"
-            }`}
-          >
-            Monthly
-          </button>
-          <button
-            onClick={() => setAnnual(true)}
-            className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
-              annual ? "bg-surface text-bone" : "text-muted hover:text-bone"
-            }`}
-          >
-            Annual
-            <span className="ml-1.5 rounded-full bg-ember/20 px-1.5 py-0.5 font-mono text-[0.6rem] text-ember">
-              {annualInfo.monthsFree} months free
-            </span>
-          </button>
-        </div>
 
         {/* Comparison matrix */}
         <div className="mt-8 overflow-x-auto">
@@ -114,15 +64,10 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
                       <div className="font-display text-lg text-bone">{t.name}</div>
                       <div className="mt-1">
                         <span className="font-display text-3xl text-bone">
-                          ${annual ? t.annualMonthly : t.monthly}
+                          ${t.monthly}
                         </span>
                         <span className="font-mono text-xs text-faint">/mo</span>
                       </div>
-                      {annual && (
-                        <div className="mt-0.5 text-[0.65rem] text-faint">
-                          billed monthly · 12-mo term
-                        </div>
-                      )}
                     </div>
                   </th>
                 ))}
@@ -199,7 +144,7 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
                       size="md"
                       className="w-full"
                     >
-                      Start free trial
+                      Get started
                     </Button>
                   </td>
                 ))}
@@ -219,24 +164,6 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
             </Link>
             .
           </p>
-          <div className="rounded-xl border border-line bg-surface/40 p-5">
-            <div className="font-mono text-xs uppercase tracking-wider text-faint">
-              Bundles you can buy
-            </div>
-            <p className="mt-1 text-xs text-faint">
-              Top up anytime — always cheaper than running into overage.
-            </p>
-            <div className="mt-3 grid grid-cols-3 gap-3">
-              {bundles.map((b) => (
-                <div key={b.label}>
-                  <div className="font-display text-lg text-bone">{b.amount}</div>
-                  <div className="mt-0.5 text-xs text-faint">
-                    {b.label} · {b.unit}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     </section>

@@ -36,31 +36,29 @@ export const DEFAULT_ENTITLEMENTS: Entitlements = {
 export interface ModuleInfo {
   key: ModuleKey;
   name: string;
-  price: number;
   blurb: string;
   grants: string;
 }
 
+// Capabilities are framed around CONNECTIONS: connecting the client's booking
+// system / CRM is the product; the native engine is the "Managed" fallback.
 export const MODULE_CATALOG: ModuleInfo[] = [
   {
     key: "booking",
-    name: "Booking Assistant",
-    price: 49,
-    blurb: "Let the assistant check live availability and book appointments.",
-    grants: "Availability + booking tools, Google Calendar, confirmations.",
+    name: "Booking",
+    blurb: "Book into the client's own scheduler, or Omnivo's Managed calendar.",
+    grants: "Availability + booking tools (connected provider or Managed).",
   },
   {
     key: "leadQualification",
     name: "Lead Capture & Qualification",
-    price: 15,
     blurb: "Ask qualifying questions and capture richer, scored leads.",
     grants: "Qualification questions, intent detection, owner notifications.",
   },
   {
     key: "integrations",
-    name: "Integrations",
-    price: 49,
-    blurb: "Connect your own booking system or CRM.",
+    name: "Connections",
+    blurb: "Connect the client's booking system, CRM, and calendar.",
     grants: "Booking provider + CRM sync (outbound) + customer lookup (inbound).",
   },
 ];

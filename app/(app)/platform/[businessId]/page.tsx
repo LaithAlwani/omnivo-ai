@@ -60,17 +60,28 @@ function InstallActions({
   businessId,
   status,
   provisioning,
+  installFeeCents,
+  monthlyOverrideCents,
 }: {
   slug: string;
   businessId: Id<"businesses">;
   status: string;
   provisioning: string;
+  installFeeCents: number | null;
+  monthlyOverrideCents: number | null;
 }) {
   const goLive = useMutation(api.businesses.goLive);
   const pause = useMutation(api.businesses.pause);
   const setProvisioning = useMutation(api.platform.setProvisioning);
+  const setInstallTerms = useMutation(api.platform.setInstallTerms);
   const invite = useAction(api.invitations.invite);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [installFee, setInstallFee] = useState(
+    installFeeCents != null ? String(installFeeCents / 100) : "",
+  );
+  const [monthly, setMonthly] = useState(
+    monthlyOverrideCents != null ? String(monthlyOverrideCents / 100) : "",
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -153,6 +164,57 @@ function InstallActions({
           {busy === "invite" ? "…" : "Invite owner"}
         </button>
       </div>
+
+      {provisioning === "installer" && (
+        <div className="mt-4 border-t border-line pt-4">
+          <div className="font-mono text-[0.6rem] uppercase tracking-wider text-faint">
+            Install terms (modeled, not charged)
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <label className="text-muted">
+              Install fee $
+              <input
+                value={installFee}
+                onChange={(e) => setInstallFee(e.target.value)}
+                type="number"
+                className="ml-1 h-9 w-24 rounded-lg border border-line-strong bg-surface px-2 text-bone focus-visible:border-ember"
+              />
+            </label>
+            <label className="text-muted">
+              Monthly $
+              <input
+                value={monthly}
+                onChange={(e) => setMonthly(e.target.value)}
+                type="number"
+                placeholder="tier"
+                className="ml-1 h-9 w-24 rounded-lg border border-line-strong bg-surface px-2 text-bone placeholder:text-faint focus-visible:border-ember"
+              />
+            </label>
+            <button
+              onClick={() =>
+                run(
+                  "terms",
+                  () =>
+                    setInstallTerms({
+                      businessId,
+                      installFeeCents: installFee
+                        ? Math.round(Number(installFee) * 100)
+                        : undefined,
+                      monthlyOverrideCents: monthly
+                        ? Math.round(Number(monthly) * 100)
+                        : undefined,
+                    }),
+                  "Terms saved.",
+                )
+              }
+              disabled={busy !== null}
+              className={`${btn} bg-ember text-[#160b04] hover:bg-flare`}
+            >
+              {busy === "terms" ? "…" : "Save terms"}
+            </button>
+          </div>
+        </div>
+      )}
       {msg && <p className="mt-3 text-sm text-bone-dim">{msg}</p>}
     </section>
   );
@@ -215,6 +277,8 @@ export default function PlatformBusinessDetail() {
         businessId={business._id}
         status={business.status}
         provisioning={business.provisioning}
+        installFeeCents={business.installFeeCents}
+        monthlyOverrideCents={business.monthlyOverrideCents}
       />
 
       <Section title="Upcoming bookings" count={upcoming.length}>

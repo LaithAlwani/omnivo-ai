@@ -59,15 +59,6 @@ export default defineSchema({
     // Extra locations bought beyond the plan's included count (a paid Stripe
     // subscription add-on). Effective cap = plan's locationLimit + paidLocations.
     paidLocations: v.optional(v.number()),
-    // "monthly" (cancel anytime) or "annual" (12-mo commitment, billed monthly,
-    // 2 months free, no mid-term cancellation). Defaults to monthly.
-    billingCadence: v.optional(
-      v.union(v.literal("monthly"), v.literal("annual")),
-    ),
-    // For annual accounts: the account can't cancel/downgrade before this.
-    commitmentEndsAt: v.optional(v.number()),
-    // Founding Partner: locked-in 50%-off early-adopter discount (first 10).
-    foundingPartner: v.optional(v.boolean()),
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
     // Mirror of the Stripe subscription lifecycle for the billing UI:
@@ -102,6 +93,11 @@ export default defineSchema({
     ),
     // The installer (a platform-admin user) attributed to this tenant, if any.
     installerId: v.optional(v.id("users")),
+    // Installer commercial terms (set by the operator; modeled, not yet charged).
+    // One-time install/setup fee; and a quoted monthly override (unset → the
+    // published tier price).
+    installFeeCents: v.optional(v.number()),
+    monthlyOverrideCents: v.optional(v.number()),
     // Legacy per-business plan. Superseded by the owning account's `plan`; kept
     // (optional) as the migration source and removed in a later cleanup.
     tier: v.optional(tierValidator),
@@ -406,11 +402,6 @@ export default defineSchema({
     aiOutputTokens: v.optional(v.number()),
     aiCacheReadTokens: v.optional(v.number()),
     aiCostCents: v.optional(v.number()),
-    // Prepaid top-ups bought via Stripe packs this period (added to the plan's
-    // included allowance; no rollover). Credits are in cents ($1 = 100 credits).
-    purchasedCreditCents: v.optional(v.number()),
-    purchasedEmails: v.optional(v.number()),
-    purchasedSms: v.optional(v.number()),
   })
     .index("by_account_period", ["accountId", "period"])
     .index("by_business_period", ["businessId", "period"]),

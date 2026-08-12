@@ -119,6 +119,8 @@ export const provision = internalMutation({
     ownerUserId: v.optional(v.id("users")),
     provisioning: v.optional(v.union(v.literal("self"), v.literal("installer"))),
     installerId: v.optional(v.id("users")),
+    installFeeCents: v.optional(v.number()),
+    monthlyOverrideCents: v.optional(v.number()),
   },
   returns: v.id("businesses"),
   handler: async (ctx, args) => {
@@ -154,6 +156,8 @@ export const provision = internalMutation({
       status: provisioning === "installer" ? "installing" : "draft",
       provisioning,
       installerId: args.installerId,
+      installFeeCents: args.installFeeCents,
+      monthlyOverrideCents: args.monthlyOverrideCents,
       domains: [],
       embedKeyPrefix: args.embedKeyPrefix,
       embedKeyHash: args.embedKeyHash,

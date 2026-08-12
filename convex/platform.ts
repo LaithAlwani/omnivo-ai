@@ -255,6 +255,8 @@ export const businessDetail = query({
         tier: await planForBusiness(ctx, business._id),
         status: business.status,
         provisioning: business.provisioning ?? "self",
+        installFeeCents: business.installFeeCents ?? null,
+        monthlyOverrideCents: business.monthlyOverrideCents ?? null,
         timezone: business.timezone ?? null,
         domains: business.domains,
         createdAt: business._creationTime,
@@ -361,6 +363,8 @@ export const provisionForClient = action({
     name: v.string(),
     slug: v.string(),
     tier: v.optional(planValidator),
+    installFeeCents: v.optional(v.number()),
+    monthlyOverrideCents: v.optional(v.number()),
   },
   returns: v.object({ businessId: v.id("businesses"), slug: v.string() }),
   handler: async (ctx, args): Promise<{ businessId: Id<"businesses">; slug: string }> => {
@@ -388,6 +392,8 @@ export const provisionForClient = action({
         ownerUserId,
         provisioning: "installer",
         installerId,
+        installFeeCents: args.installFeeCents,
+        monthlyOverrideCents: args.monthlyOverrideCents,
       },
     );
     await ctx.runMutation(internal.platform.audit, {
@@ -423,6 +429,34 @@ export const setProvisioning = mutation({
       scope: "platform",
       businessId,
       action: `platform.handoff.${mode}`,
+    });
+    return null;
+  },
+});
+
+/** Set an installer tenant's commercial terms (superadmin). Modeled, not yet
+ *  charged. */
+export const setInstallTerms = mutation({
+  args: {
+    businessId: v.id("businesses"),
+    installFeeCents: v.optional(v.number()),
+    monthlyOverrideCents: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, { businessId, installFeeCents, monthlyOverrideCents }) => {
+    const { userId } = await requirePlatformAdmin(ctx, "superadmin");
+    const business = await ctx.db.get(businessId);
+    if (!business) appError("NOT_FOUND", "That business doesn't exist.");
+    await ctx.db.patch(businessId, {
+      installFeeCents: installFeeCents ?? undefined,
+      monthlyOverrideCents: monthlyOverrideCents ?? undefined,
+    });
+    await recordAudit(ctx, {
+      actorUserId: userId,
+      scope: "platform",
+      businessId,
+      action: "platform.setInstallTerms",
+      meta: { installFeeCents, monthlyOverrideCents },
     });
     return null;
   },

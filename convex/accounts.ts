@@ -13,13 +13,10 @@ import {
   tierLimits,
   locationLimit,
   planPrice,
-  effectiveMonthlyCents,
-  FOUNDING_SLOTS,
   usagePeriod,
   overageUnits,
   overageCostCents,
   creditStatus,
-  withPurchased,
 } from "./lib/tiers";
 
 // -----------------------------------------------------------------------------
@@ -81,25 +78,16 @@ export const myAccount = query({
     const convUsed = counter?.conversations ?? 0;
     const emailUsed = counter?.email ?? 0;
     const smsUsed = counter?.sms ?? 0;
-    // Prepaid packs bought this period lift the included allowances (no rollover).
-    const purchasedCreditCents = counter?.purchasedCreditCents ?? 0;
-    const emailCapEff = withPurchased(
-      limits.emailsPerMonth,
-      counter?.purchasedEmails ?? 0,
-    );
-    const smsCapEff = withPurchased(limits.smsPerMonth, counter?.purchasedSms ?? 0);
-    // AI conversations → token-based credit balance (no hard cap; overage accrues
-    // past the included + purchased allowance). Emails/SMS keep capped overage.
+    // AI conversations → token-based credit balance (overage accrues past the
+    // included monthly allowance). Emails/SMS keep capped overage.
     const billableTokens =
       (counter?.aiInputTokens ?? 0) + (counter?.aiOutputTokens ?? 0);
-    const aiCredits = creditStatus(account.plan, billableTokens, purchasedCreditCents);
+    const aiCredits = creditStatus(account.plan, billableTokens);
     const overageCents =
       aiCredits.overageCents +
-      overageCostCents("emails", overageUnits(emailUsed, emailCapEff)) +
-      overageCostCents("sms", overageUnits(smsUsed, smsCapEff));
+      overageCostCents("emails", overageUnits(emailUsed, limits.emailsPerMonth)) +
+      overageCostCents("sms", overageUnits(smsUsed, limits.smsPerMonth));
 
-    const cadence = account.billingCadence ?? "monthly";
-    const founding = account.foundingPartner ?? false;
     const includedLocations = locationLimit(account.plan);
     const businessCount = (
       await ctx.db
@@ -116,14 +104,7 @@ export const myAccount = query({
       locationLimitPerProject: accountLocationLimit(account),
       // Billing snapshot for the account/usage view.
       billing: {
-        cadence,
-        founding,
         priceMonthly: planPrice(account.plan),
-        effectiveMonthlyCents: effectiveMonthlyCents(account.plan, {
-          founding,
-          cadence,
-        }),
-        commitmentEndsAt: account.commitmentEndsAt ?? null,
         aiCredits,
         // Stripe subscription state for the billing UI (null before checkout).
         subscriptionStatus: account.subscriptionStatus ?? null,
@@ -138,8 +119,8 @@ export const myAccount = query({
         // Retained as an activity metric; the credit balance (billing.aiCredits)
         // is now what governs AI usage.
         conversations: { used: convUsed, cap: limits.conversationsPerMonth },
-        emails: { used: emailUsed, cap: emailCapEff },
-        sms: { used: smsUsed, cap: smsCapEff },
+        emails: { used: emailUsed, cap: limits.emailsPerMonth },
+        sms: { used: smsUsed, cap: limits.smsPerMonth },
       },
       // Estimated overage this period across the pooled allowances.
       overageCents,
@@ -151,23 +132,9 @@ export const myAccount = query({
   },
 });
 
-/** How many Founding Partner slots remain (for the marketing banner). */
-export const foundingSlotsLeft = query({
-  args: {},
-  returns: v.number(),
-  handler: async (ctx) => {
-    const founders = await ctx.db
-      .query("accounts")
-      .filter((q) => q.eq(q.field("foundingPartner"), true))
-      .collect();
-    return Math.max(0, FOUNDING_SLOTS - founders.length);
-  },
-});
-
 /** Change the plan on the account owning `slug` and re-sync its business's
  *  modules to the new tier's bundle (owner only). Customer plan changes go
- *  through Stripe (checkout/portal); this stays as a platform/support fallback.
- *  Refuses a downgrade before an annual commitment ends. */
+ *  through Stripe (checkout/portal); this stays as a platform/support fallback. */
 export const setPlan = mutation({
   args: { slug: v.string(), plan: planValidator },
   returns: v.null(),
@@ -176,25 +143,6 @@ export const setPlan = mutation({
     if (!business.accountId) appError("NOT_FOUND", "This account has no plan yet.");
     const account = await ctx.db.get(business.accountId);
     if (!account) appError("NOT_FOUND", "Account not found.");
-
-    // Annual accounts can't downgrade before the commitment ends.
-    const rank: Record<Plan, number> = {
-      starter: 0,
-      professional: 1,
-      premium: 2,
-      enterprise: 3,
-    };
-    const isDowngrade = rank[plan] < rank[account.plan];
-    if (
-      isDowngrade &&
-      account.commitmentEndsAt &&
-      account.commitmentEndsAt > Date.now()
-    ) {
-      appError(
-        "FORBIDDEN",
-        "This plan is on an annual commitment and can't be downgraded until the term ends.",
-      );
-    }
 
     await ctx.db.patch(business.accountId, { plan });
     // Every business under the account picks up the new tier's modules.
@@ -206,34 +154,6 @@ export const setPlan = mutation({
       await syncEntitlementsToPlan(ctx, b._id, plan);
     }
     return null;
-  },
-});
-
-/** Internal: grant Founding Partner status to an account, capped at the first
- *  FOUNDING_SLOTS accounts. Also applied automatically on checkout when the
- *  founding coupon is used. */
-export const markFoundingPartner = internalMutation({
-  args: { accountId: v.id("accounts") },
-  returns: v.object({ granted: v.boolean(), slotsLeft: v.number() }),
-  handler: async (ctx, { accountId }) => {
-    const account = await ctx.db.get(accountId);
-    if (!account) appError("NOT_FOUND", "Account not found.");
-    if (account.foundingPartner) {
-      const founders = await ctx.db
-        .query("accounts")
-        .filter((q) => q.eq(q.field("foundingPartner"), true))
-        .collect();
-      return { granted: true, slotsLeft: Math.max(0, FOUNDING_SLOTS - founders.length) };
-    }
-    const founders = await ctx.db
-      .query("accounts")
-      .filter((q) => q.eq(q.field("foundingPartner"), true))
-      .collect();
-    if (founders.length >= FOUNDING_SLOTS) {
-      return { granted: false, slotsLeft: 0 };
-    }
-    await ctx.db.patch(accountId, { foundingPartner: true });
-    return { granted: true, slotsLeft: FOUNDING_SLOTS - founders.length - 1 };
   },
 });
 

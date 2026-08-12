@@ -61,7 +61,12 @@ test("integrations — save requires the module; inbound gates the lookup tool",
   const t = convexTest(schema, modules);
   const { as, businessId } = await project(t);
 
-  // Module off by default → save refused.
+  // Connections are base, so turn the module OFF to prove save is gated on it.
+  await as.mutation(api.entitlements.setModule, {
+    slug: "clip",
+    module: "integrations",
+    enabled: false,
+  });
   await expect(
     as.action(api.integrationsNode.save, {
       slug: "clip",
@@ -76,7 +81,7 @@ test("integrations — save requires the module; inbound gates the lookup tool",
     await t.query(internal.integrations.hasActiveInbound, { businessId }),
   ).toBe(false);
 
-  // Enable the module, then save an inbound source.
+  // Re-enable the module, then save an inbound source.
   await as.mutation(api.entitlements.setModule, {
     slug: "clip",
     module: "integrations",

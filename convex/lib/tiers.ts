@@ -17,9 +17,6 @@ export type Tier = "starter" | "professional" | "premium" | "enterprise";
 /** The account's base subscription plan. */
 export type Plan = Tier;
 
-/** How a subscription is billed. */
-export type Cadence = "monthly" | "annual";
-
 export interface TierLimits {
   /** Regular monthly price in USD (null = custom/Enterprise). */
   priceMonthly: number | null;
@@ -47,7 +44,8 @@ const ALL_MODULES: ModuleKey[] = [
 export const TIER_LIMITS: Record<Tier, TierLimits> = {
   starter: {
     priceMonthly: 299,
-    includedModules: ["booking", "leadQualification"],
+    // Connecting the client's own systems is the product — Integrations is base.
+    includedModules: ["booking", "leadQualification", "integrations"],
     conversationsPerMonth: null,
     emailsPerMonth: 2500,
     smsPerMonth: 100,
@@ -154,49 +152,24 @@ export function entitlementsForPlan(plan: Plan): Entitlements {
   return e;
 }
 
-// --- Pricing (regular / founding / annual) ----------------------------------
+// --- Pricing -----------------------------------------------------------------
 
 /** Extra location add-on, in cents ($19.99/mo). */
 export const ADDITIONAL_LOCATION_CENTS = 1999;
 
-/** Founding Partner program: first N accounts get a locked-in discount. */
-export const FOUNDING_SLOTS = 10;
-export const FOUNDING_DISCOUNT_PCT = 50;
-
-/** Annual commitment: 12-month term, 2 months free, billed monthly. */
-export const ANNUAL_MONTHS_FREE = 2;
-export const ANNUAL_TERM_MONTHS = 12;
-
-/** Regular monthly price in USD (null = custom/Enterprise). */
+/** Published monthly price in USD (null = custom/Enterprise). */
 export function planPrice(plan: Plan): number | null {
   return TIER_LIMITS[plan].priceMonthly;
 }
 
-/** Founding Partner monthly price in USD (50% off; null for Enterprise). */
-export function foundingPrice(plan: Plan): number | null {
-  const p = planPrice(plan);
-  return p === null ? null : Math.round((p * (100 - FOUNDING_DISCOUNT_PCT)) / 100);
-}
-
-/** Effective monthly price on the annual plan (2 months free → ×10/12). */
-export function annualMonthlyPrice(plan: Plan): number | null {
-  const p = planPrice(plan);
-  return p === null
-    ? null
-    : Math.round((p * (ANNUAL_TERM_MONTHS - ANNUAL_MONTHS_FREE)) / ANNUAL_TERM_MONTHS);
-}
-
-/** The monthly amount actually charged, in cents. Founding wins over cadence;
- *  founding is a monthly program, so the two don't stack. */
-export function effectiveMonthlyCents(
+/** The monthly amount charged, in cents. Installer tenants may carry a quoted
+ *  override; otherwise it's the published tier price. */
+export function monthlyCents(
   plan: Plan,
-  opts: { founding?: boolean; cadence?: Cadence } = {},
+  overrideCents?: number | null,
 ): number | null {
-  const dollars = opts.founding
-    ? foundingPrice(plan)
-    : opts.cadence === "annual"
-      ? annualMonthlyPrice(plan)
-      : planPrice(plan);
+  if (overrideCents != null) return overrideCents;
+  const dollars = planPrice(plan);
   return dollars === null ? null : dollars * 100;
 }
 
@@ -264,18 +237,12 @@ export interface CreditStatus {
   overageCents: number;
 }
 
-/** An account's AI-credit position for the month, given billable tokens used and
- *  any prepaid credit packs bought this period (in cents). Purchases extend both
- *  the granted balance and the token allowance, so overage only accrues once the
- *  included grant AND the top-ups are spent. */
-export function creditStatus(
-  plan: Plan,
-  billableTokens: number,
-  purchasedCreditCents = 0,
-): CreditStatus {
+/** An account's AI-credit position for the month, given billable tokens used.
+ *  Overage accrues once the included monthly grant is spent. */
+export function creditStatus(plan: Plan, billableTokens: number): CreditStatus {
   const included = creditGrantCents(plan);
   if (included === null) {
-    // Enterprise / unlimited — top-ups are moot.
+    // Enterprise / unlimited.
     return {
       grantedCents: null,
       usedCents: Math.round(creditCostCents(billableTokens)),
@@ -287,8 +254,8 @@ export function creditStatus(
       overageCents: 0,
     };
   }
-  const grant = included + purchasedCreditCents;
-  const allowance = grant * TOKENS_PER_CREDIT; // total token allowance incl. packs
+  const grant = included;
+  const allowance = grant * TOKENS_PER_CREDIT;
   const overTokens = Math.max(0, billableTokens - allowance);
   const usedCents = Math.min(grant, Math.round(creditCostCents(billableTokens)));
   return {
@@ -304,13 +271,12 @@ export function creditStatus(
 }
 
 // --- Overage accounting (emails + SMS) --------------------------------------
-// Emails/SMS still have a hard monthly cap with block-based overage display.
-// (Conversations moved to the token-credit model above.)
+// Emails/SMS have a hard monthly cap; overage is metered per-unit for internal
+// invoicing evidence. (Conversations use the token-credit model above.)
 
 export type MeteredUnit = "emails" | "sms";
 
-/** Auto-charged overage once you pass a monthly cap — deliberately per-unit and
- *  pricey so buying a prepaid bundle (below) is always the better deal. */
+/** Per-unit overage once a monthly cap is passed (internal metering). */
 export const OVERAGE_RATES: Record<
   MeteredUnit,
   { per: number; cents: number }
@@ -318,19 +284,6 @@ export const OVERAGE_RATES: Record<
   emails: { per: 1, cents: 5 }, // $0.05 / email
   sms: { per: 1, cents: 50 }, // $0.50 / SMS
 };
-
-/** Prepaid bundles — the cheaper way to add allowance (live with billing). */
-export const BUNDLE_RATES: Record<
-  MeteredUnit,
-  { units: number; cents: number }
-> = {
-  emails: { units: 1000, cents: 500 }, // $5 / 1,000
-  sms: { units: 100, cents: 1000 }, // $10 / 100
-};
-
-/** AI-credit top-up pack, in cents (dollar-denominated credits; live with
- *  billing). Cheaper than letting AI usage run into overage. */
-export const CREDIT_PACK_CENTS = 1000; // $10
 
 /** Units used beyond the cap (0 when under, or when the plan is unlimited). */
 export function overageUnits(used: number, cap: number | null): number {
@@ -344,41 +297,6 @@ export function overageCostCents(unit: MeteredUnit, units: number): number {
   if (units <= 0) return 0;
   const { per, cents } = OVERAGE_RATES[unit];
   return Math.ceil(units / per) * cents;
-}
-
-/** A monthly cap raised by prepaid bundles bought this period (null = unlimited). */
-export function withPurchased(cap: number | null, purchased: number): number | null {
-  return cap === null ? null : cap + purchased;
-}
-
-// --- Prepaid packs (one-time Stripe purchases) ------------------------------
-// One-time top-ups added to the CURRENT period's allowance (no rollover).
-
-export type PackKey = "credits" | "emails" | "sms";
-
-/** The Stripe charge, in cents, for a one-time pack. */
-export function packPriceCents(pack: PackKey): number {
-  switch (pack) {
-    case "credits":
-      return CREDIT_PACK_CENTS; // $10
-    case "emails":
-      return BUNDLE_RATES.emails.cents; // $5
-    case "sms":
-      return BUNDLE_RATES.sms.cents; // $10
-  }
-}
-
-/** What a pack adds to this period's allowance when its payment completes. */
-export function packGrant(pack: PackKey): {
-  creditCents: number;
-  emails: number;
-  sms: number;
-} {
-  return {
-    creditCents: pack === "credits" ? CREDIT_PACK_CENTS : 0,
-    emails: pack === "emails" ? BUNDLE_RATES.emails.units : 0,
-    sms: pack === "sms" ? BUNDLE_RATES.sms.units : 0,
-  };
 }
 
 /** UTC "YYYY-MM" usage period for a timestamp (the month a unit counts toward).

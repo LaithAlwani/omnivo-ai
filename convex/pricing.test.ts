@@ -3,14 +3,7 @@ import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import {
-  planPrice,
-  foundingPrice,
-  annualMonthlyPrice,
-  effectiveMonthlyCents,
-  smsCap,
-  locationLimit,
-} from "./lib/tiers";
+import { planPrice, monthlyCents, smsCap, locationLimit } from "./lib/tiers";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -31,29 +24,19 @@ async function ownerWithBusiness(
   return { as };
 }
 
-// Regular / founding / annual pricing math.
-test("pricing helpers — regular, founding (50% off), annual (2 months free)", () => {
+// Published monthly pricing + the installer override fork.
+test("pricing helpers — published price, monthlyCents override, caps", () => {
   expect(planPrice("starter")).toBe(299);
   expect(planPrice("professional")).toBe(449);
   expect(planPrice("premium")).toBe(499);
   expect(planPrice("enterprise")).toBeNull();
 
-  // 50% off, rounded.
-  expect(foundingPrice("starter")).toBe(150);
-  expect(foundingPrice("professional")).toBe(225);
-  expect(foundingPrice("premium")).toBe(250);
-
-  // × 10/12, rounded.
-  expect(annualMonthlyPrice("premium")).toBe(Math.round((499 * 10) / 12)); // 416
-
-  // effectiveMonthlyCents resolves the right rate (in cents).
-  expect(effectiveMonthlyCents("premium", {})).toBe(49900);
-  expect(effectiveMonthlyCents("premium", { founding: true })).toBe(25000);
-  expect(effectiveMonthlyCents("premium", { cadence: "annual" })).toBe(41600);
-  // Founding wins over cadence (they don't stack).
-  expect(
-    effectiveMonthlyCents("premium", { founding: true, cadence: "annual" }),
-  ).toBe(25000);
+  // monthlyCents falls back to the published tier price (in cents)...
+  expect(monthlyCents("premium")).toBe(49900);
+  expect(monthlyCents("enterprise")).toBeNull();
+  // ...but an installer's quoted override wins.
+  expect(monthlyCents("premium", 60000)).toBe(60000);
+  expect(monthlyCents("enterprise", 120000)).toBe(120000);
 
   // SMS is in every tier now, scaling up; locations scale with the tier.
   expect(smsCap("starter")).toBe(100);
@@ -64,23 +47,27 @@ test("pricing helpers — regular, founding (50% off), annual (2 months free)", 
   expect(locationLimit("premium")).toBe(5);
 });
 
-// setPlan re-syncs the business's modules to the new tier's bundle.
-test("setPlan — upgrading flips modules on, downgrading turns them off", async () => {
+// setPlan re-syncs the plan; every tier now bundles the same connector modules.
+test("setPlan — changes the plan, connector modules stay on across tiers", async () => {
   const t = convexTest(schema, modules);
   const { as } = await ownerWithBusiness(t, "starter");
 
+  // Connectors (Integrations/booking/lead) are base — on from Starter up.
   let e = await as.query(api.entitlements.get, { slug: "co" });
-  expect(e.integrationsEnabled).toBe(false); // Starter has no Integrations
+  expect(e.integrationsEnabled).toBe(true);
+  expect(e.bookingEnabled).toBe(true);
+  expect(e.leadQualificationEnabled).toBe(true);
 
   await as.mutation(api.accounts.setPlan, { slug: "co", plan: "premium" });
+  expect((await as.query(api.accounts.myAccount, {}))?.plan).toBe("premium");
   e = await as.query(api.entitlements.get, { slug: "co" });
   expect(e.integrationsEnabled).toBe(true);
   expect(e.bookingEnabled).toBe(true);
 
   await as.mutation(api.accounts.setPlan, { slug: "co", plan: "starter" });
+  expect((await as.query(api.accounts.myAccount, {}))?.plan).toBe("starter");
   e = await as.query(api.entitlements.get, { slug: "co" });
-  expect(e.integrationsEnabled).toBe(false); // turned off on downgrade
-  expect(e.bookingEnabled).toBe(true); // still in Starter
+  expect(e.integrationsEnabled).toBe(true); // still base on Starter
 });
 
 // Extra locations bought raise the effective cap.
@@ -95,35 +82,4 @@ test("paid locations raise the effective location cap", async () => {
   const acct = await as.query(api.accounts.myAccount, {});
   // Starter includes 1 + 2 paid = 3.
   expect(acct?.locations).toMatchObject({ included: 1, paid: 2, cap: 3 });
-});
-
-// Founding Partner is capped at the first 10 accounts.
-test("founding — first 10 accounts granted, 11th refused", async () => {
-  const t = convexTest(schema, modules);
-  // Ten accounts already marked founding.
-  const ids = await t.run(async (ctx) => {
-    const out = [];
-    for (let i = 0; i < 10; i++) {
-      const u = await ctx.db.insert("users", { email: `f${i}@x.com` });
-      out.push(
-        await ctx.db.insert("accounts", {
-          ownerUserId: u,
-          plan: "starter" as const,
-          foundingPartner: true,
-        }),
-      );
-    }
-    // An 11th, not yet founding.
-    const u = await ctx.db.insert("users", { email: "eleventh@x.com" });
-    out.push(
-      await ctx.db.insert("accounts", { ownerUserId: u, plan: "starter" as const }),
-    );
-    return out;
-  });
-
-  expect(await t.query(api.accounts.foundingSlotsLeft, {})).toBe(0);
-  const res = await t.mutation(internal.accounts.markFoundingPartner, {
-    accountId: ids[10],
-  });
-  expect(res.granted).toBe(false);
 });

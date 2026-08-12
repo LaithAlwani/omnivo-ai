@@ -10,21 +10,14 @@ import {
   type Tier,
   TIER_LIMITS,
   planPrice,
-  foundingPrice,
-  annualMonthlyPrice,
   includedModules,
   locationLimit,
   creditGrantCents,
   creditsFromCents,
   emailCap,
   smsCap,
-  FOUNDING_SLOTS,
-  FOUNDING_DISCOUNT_PCT,
-  ANNUAL_MONTHS_FREE,
   ADDITIONAL_LOCATION_CENTS,
   OVERAGE_RATES,
-  BUNDLE_RATES,
-  CREDIT_PACK_CENTS,
 } from "@/convex/lib/tiers";
 import { MODULE_CATALOG } from "@/convex/modules/registry";
 
@@ -202,7 +195,7 @@ export const plans: Plan[] = [
       creditBullet("starter"),
       `${smsCap("starter")!.toLocaleString()} SMS / mo`,
     ],
-    cta: "Start free trial",
+    cta: "Get started",
   },
   {
     slug: "professional",
@@ -218,7 +211,7 @@ export const plans: Plan[] = [
       creditBullet("professional"),
       `${smsCap("professional")!.toLocaleString()} SMS / mo`,
     ],
-    cta: "Start free trial",
+    cta: "Get started",
   },
   {
     slug: "premium",
@@ -235,7 +228,7 @@ export const plans: Plan[] = [
       creditBullet("premium"),
     ],
     featured: true,
-    cta: "Start free trial",
+    cta: "Get started",
   },
   {
     slug: "enterprise",
@@ -261,8 +254,6 @@ export const pricingTiers = PAID_TIERS.map((key) => ({
   key,
   name: key.charAt(0).toUpperCase() + key.slice(1),
   monthly: planPrice(key)!,
-  founding: foundingPrice(key)!,
-  annualMonthly: annualMonthlyPrice(key)!,
   locations: locationLimit(key)!,
   // AI credits — a monthly credit balance the AI draws down as it works.
   credits: creditsFromCents(creditGrantCents(key)!),
@@ -279,18 +270,12 @@ export const pricingModules = MODULE_CATALOG.map((m) => ({
   name: m.name,
 }));
 
-export const foundingInfo = {
-  slots: FOUNDING_SLOTS,
-  discountPct: FOUNDING_DISCOUNT_PCT,
-};
-export const annualInfo = { monthsFree: ANNUAL_MONTHS_FREE };
 export const additionalLocationPrice = ADDITIONAL_LOCATION_CENTS / 100;
 
 const money = (cents: number) =>
   cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
 
-// Auto-charged overage once you pass a monthly allowance — per unit, and priced
-// so a bundle is always the smarter buy (founders included).
+// Metered overage once you pass a monthly allowance (per unit).
 export const overageRates = [
   {
     label: "Extra emails",
@@ -301,27 +286,6 @@ export const overageRates = [
     label: "Extra SMS",
     price: money(OVERAGE_RATES.sms.cents),
     unit: "per SMS",
-  },
-] as const;
-
-// Prepaid bundles you can buy anytime (Stripe one-time packs) — cheaper than
-// running into overage. The AI-credit pack is shown as a credit quantity;
-// email/SMS add-ons keep their dollar pricing.
-export const bundles = [
-  {
-    label: "AI credits",
-    amount: money(CREDIT_PACK_CENTS),
-    unit: `per ${creditsFromCents(CREDIT_PACK_CENTS).toLocaleString()} credits`,
-  },
-  {
-    label: "Emails",
-    amount: money(BUNDLE_RATES.emails.cents),
-    unit: `per ${BUNDLE_RATES.emails.units.toLocaleString()}`,
-  },
-  {
-    label: "SMS",
-    amount: money(BUNDLE_RATES.sms.cents),
-    unit: `per ${BUNDLE_RATES.sms.units}`,
   },
 ] as const;
 

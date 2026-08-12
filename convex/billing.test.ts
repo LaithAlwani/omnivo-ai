@@ -48,10 +48,8 @@ test("applySubscription sets plan + ids, re-syncs entitlements, resumes paused",
     stripeSubscriptionId: "sub_123",
     stripeCustomerId: "cus_123",
     plan: "premium",
-    cadence: "monthly",
     status: "active",
     paidLocations: 2,
-    founding: true,
   });
 
   const account = (await t.run((ctx) => ctx.db.get(accountId)))!;
@@ -60,8 +58,6 @@ test("applySubscription sets plan + ids, re-syncs entitlements, resumes paused",
   expect(account.stripeSubscriptionId).toBe("sub_123");
   expect(account.stripeCustomerId).toBe("cus_123");
   expect(account.paidLocations).toBe(2);
-  expect(account.foundingPartner).toBe(true);
-  expect(account.billingCadence).toBe("monthly");
 
   // Paused business resumes to live; its modules match the premium bundle.
   const business = (await t.run((ctx) => ctx.db.get(businessId)))!;
@@ -74,33 +70,6 @@ test("applySubscription sets plan + ids, re-syncs entitlements, resumes paused",
   );
   expect(features?.integrationsEnabled).toBe(true); // premium bundles Integrations
   expect(features?.bookingEnabled).toBe(true);
-});
-
-test("founding is capped and locked once granted", async () => {
-  const t = convexTest(schema, modules);
-  // Fill all 10 founding slots first.
-  await t.run(async (ctx) => {
-    for (let i = 0; i < 10; i++) {
-      const u = await ctx.db.insert("users", { email: `f${i}@x.com` });
-      await ctx.db.insert("accounts", {
-        ownerUserId: u,
-        plan: "starter",
-        foundingPartner: true,
-      });
-    }
-  });
-  const { accountId } = await seed(t, "late", "bbbbbb", "starter");
-  await t.mutation(internal.billingSync.applySubscription, {
-    accountId,
-    stripeSubscriptionId: "sub_late",
-    plan: "starter",
-    cadence: "monthly",
-    status: "active",
-    paidLocations: 0,
-    founding: true, // requested, but slots are full
-  });
-  const account = (await t.run((ctx) => ctx.db.get(accountId)))!;
-  expect(account.foundingPartner ?? false).toBe(false);
 });
 
 test("clearSubscription flags canceled and pauses a live business", async () => {
@@ -122,36 +91,10 @@ test("clearSubscription flags canceled and pauses a live business", async () => 
 });
 
 // -----------------------------------------------------------------------------
-// Pack purchases → lifted allowances
+// Email hard cap (metered, no pack lift under the connector model)
 // -----------------------------------------------------------------------------
 
-test("applyPackPurchase credits the current period and lifts the AI-credit allowance", async () => {
-  const t = convexTest(schema, modules);
-  const { as, accountId } = await seed(t, "packs", "dddddd", "starter");
-
-  await t.mutation(internal.billingSync.applyPackPurchase, {
-    accountId,
-    pack: "credits",
-  });
-
-  const period = new Date().toISOString().slice(0, 7);
-  const counter = await t.run((ctx) =>
-    ctx.db
-      .query("usageCounters")
-      .withIndex("by_account_period", (q) =>
-        q.eq("accountId", accountId).eq("period", period),
-      )
-      .unique(),
-  );
-  expect(counter?.purchasedCreditCents).toBe(1000); // $10 pack
-
-  // planUsage: Starter's 1,500¢ grant + a 1,000¢ pack = 2,500 credits granted.
-  const usage = await as.query(api.tiers.planUsage, { slug: "packs" });
-  expect(usage.aiCredits.grantedCents).toBe(2500);
-  expect(usage.aiCredits.allowanceTokens).toBe(2_500_000); // 2,500 × 1,000 tokens
-});
-
-test("email pack lifts the hard send cap and the surfaced allowance", async () => {
+test("email cap is the plan cap and reports over once passed", async () => {
   const t = convexTest(schema, modules);
   const { as, businessId, accountId } = await seed(t, "mail", "eeeeee", "starter");
   const period = new Date().toISOString().slice(0, 7);
@@ -165,21 +108,13 @@ test("email pack lifts the hard send cap and the surfaced allowance", async () =
       email: 2500,
     }),
   );
-  let status = await t.query(internal.usage.emailCapStatus, {
+  const status = await t.query(internal.usage.emailCapStatus, {
     businessId,
     period,
   });
-  expect(status.over).toBe(true); // capped before the pack
-
-  // Buy a 1,000-email bundle → cap rises to 3,500, no longer over.
-  await t.mutation(internal.billingSync.applyPackPurchase, {
-    accountId,
-    pack: "emails",
-  });
-  status = await t.query(internal.usage.emailCapStatus, { businessId, period });
-  expect(status.cap).toBe(3500);
-  expect(status.over).toBe(false);
+  expect(status.cap).toBe(2500);
+  expect(status.over).toBe(true);
 
   const usage = await as.query(api.tiers.planUsage, { slug: "mail" });
-  expect(usage.emails.cap).toBe(3500);
+  expect(usage.emails.cap).toBe(2500);
 });
