@@ -39,6 +39,8 @@ const toolInput = v.object({
   email: v.optional(v.string()),
   phone: v.optional(v.string()),
   message: v.optional(v.string()),
+  // request_contact's optional note on why details are being collected.
+  reason: v.optional(v.string()),
 });
 
 function errMessage(e: unknown): string {
