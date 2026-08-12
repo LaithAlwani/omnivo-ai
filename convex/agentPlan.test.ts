@@ -25,17 +25,6 @@ async function tenant(t: TestConvex<typeof schema>) {
   return { as, businessId };
 }
 
-/** Remove the default seeded staff so the tenant has no native booking. */
-async function removeStaff(t: TestConvex<typeof schema>, businessId: Id<"businesses">) {
-  await t.run(async (ctx) => {
-    const rows = await ctx.db
-      .query("staff")
-      .withIndex("by_business", (q) => q.eq("businessId", businessId))
-      .collect();
-    for (const r of rows) await ctx.db.delete(r._id);
-  });
-}
-
 const plan = (t: TestConvex<typeof schema>, businessId: Id<"businesses">) =>
   t.action(internal.agentPlan.capabilityPlan, { businessId });
 
@@ -43,8 +32,7 @@ const plan = (t: TestConvex<typeof schema>, businessId: Id<"businesses">) =>
 // simply absent (FAQ-only), not present-and-failing.
 test("no connection → booking tools absent (FAQ-only)", async () => {
   const t = convexTest(schema, modules);
-  const { businessId } = await tenant(t);
-  await removeStaff(t, businessId); // no native booking, no webhook
+  const { businessId } = await tenant(t); // no scheduler connected
 
   const p = await plan(t, businessId);
   expect(p.toolNames.sort()).toEqual(["capture_lead", "list_services"]);
@@ -53,24 +41,11 @@ test("no connection → booking tools absent (FAQ-only)", async () => {
   expect(p.capabilities).not.toContain("booking");
 });
 
-// The native (Managed) engine counts as a connection once a bookable staff
-// exists — appears with no code change, just data.
-test("native bookable staff → full booking tools", async () => {
-  const t = convexTest(schema, modules);
-  const { businessId } = await tenant(t); // provision seeds a bookable "Main" staff
-
-  const p = await plan(t, businessId);
-  expect(p.toolNames).toContain("check_availability");
-  expect(p.toolNames).toContain("book_appointment");
-  expect(p.bookingSystem).toBe("native");
-});
-
 // Connecting a full webhook provider makes booking tools appear (no redeploy),
 // and it's reported as the external system.
 test("full webhook connection → external booking tools", async () => {
   const t = convexTest(schema, modules);
   const { as, businessId } = await tenant(t);
-  await removeStaff(t, businessId);
 
   await as.action(api.integrationsNode.save, {
     slug: "clip",
@@ -94,7 +69,6 @@ test("full webhook connection → external booking tools", async () => {
 test("read-only webhook → availability tool only, no write tool", async () => {
   const t = convexTest(schema, modules);
   const { as, businessId } = await tenant(t);
-  await removeStaff(t, businessId);
 
   await as.action(api.integrationsNode.save, {
     slug: "clip",
@@ -128,11 +102,11 @@ async function degrade(
   });
 }
 
-// A degraded booking connection drops booking entirely (hand-off), never falls
-// back to native — the agent captures a lead instead.
+// A degraded booking connection drops booking entirely (hand-off) — the agent
+// captures a lead instead.
 test("degraded booking webhook → booking tools dropped", async () => {
   const t = convexTest(schema, modules);
-  const { as, businessId } = await tenant(t); // has a native bookable staff too
+  const { as, businessId } = await tenant(t);
 
   await as.action(api.integrationsNode.save, {
     slug: "clip",

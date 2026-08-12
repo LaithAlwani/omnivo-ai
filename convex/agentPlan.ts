@@ -20,11 +20,7 @@ export const capabilityPlan = internalAction({
   returns: v.object({
     capabilities: v.array(v.string()),
     toolNames: v.array(v.string()),
-    bookingSystem: v.union(
-      v.literal("external"),
-      v.literal("native"),
-      v.null(),
-    ),
+    bookingSystem: v.union(v.literal("external"), v.null()),
   }),
   handler: async (ctx, { businessId }) => {
     const entitlements = await ctx.runQuery(internal.entitlements.forBusiness, {
@@ -43,14 +39,9 @@ export const capabilityPlan = internalAction({
     const caps = capabilitiesFor(entitlements, conns);
     const tools = toolsFor(caps);
 
-    // Only label the booking system when the agent can actually use it.
+    // Booking is connector-only now: labelled "external" whenever it's usable.
     const canBook = caps.has("availability") || caps.has("booking");
-    const bookingSystem =
-      canBook && provider
-        ? provider.id === "webhook"
-          ? ("external" as const)
-          : ("native" as const)
-        : null;
+    const bookingSystem = canBook && provider ? ("external" as const) : null;
 
     return {
       capabilities: Array.from(caps),

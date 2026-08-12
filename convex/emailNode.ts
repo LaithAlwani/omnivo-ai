@@ -2,12 +2,7 @@
 
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
-import type { ActionCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
-import { internal } from "./_generated/api";
 import { appError } from "./lib/errors";
-import { usagePeriod, whiteLabelEnabled } from "./lib/tiers";
-import { sendEmail as resendSend } from "./lib/resend";
 import nodemailer from "nodemailer";
 
 /** Escape user/business-provided text before interpolating into email HTML. */
@@ -76,53 +71,6 @@ async function sendEmail(opts: {
       : (process.env.MAIL_FROM ?? process.env.SMTP_USER),
     ...mail,
   });
-}
-
-/** Deliver a business-scoped email: enforce the pooled monthly email cap, then
- *  send via the tenant's verified custom domain (Resend) when they have one, or
- *  the platform SMTP account otherwise. Both paths run on our infrastructure, so
- *  both count against the allowance. Returns whether it was sent. */
-async function deliverBusinessEmail(
-  ctx: ActionCtx,
-  opts: {
-    businessId: Id<"businesses">;
-    to: string;
-    fromName: string;
-    subject: string;
-    text: string;
-    html: string;
-  },
-): Promise<boolean> {
-  const { over } = await ctx.runQuery(internal.usage.emailCapStatus, {
-    businessId: opts.businessId,
-    period: usagePeriod(Date.now()),
-  });
-  if (over) return false;
-
-  const domain = await ctx.runQuery(internal.emailDomains.configForBusiness, {
-    businessId: opts.businessId,
-  });
-  if (domain) {
-    await resendSend({
-      from: `${quote(domain.fromName)} <${domain.fromEmail}>`,
-      to: opts.to,
-      subject: opts.subject,
-      html: opts.html,
-      text: opts.text,
-    });
-  } else {
-    await sendEmail({
-      to: opts.to,
-      fromName: opts.fromName,
-      subject: opts.subject,
-      text: opts.text,
-      html: opts.html,
-    });
-  }
-  await ctx.runMutation(internal.usage.recordEmail, {
-    businessId: opts.businessId,
-  });
-  return true;
 }
 
 // --- Password reset -----------------------------------------------------------
@@ -309,89 +257,6 @@ export const sendDemoRequest = internalAction({
   },
 });
 
-// --- Booking confirmation + reminder -----------------------------------------
-
-export const sendBookingConfirmation = internalAction({
-  args: { bookingId: v.id("bookings") },
-  returns: v.null(),
-  handler: (ctx, { bookingId }) => notifyBooking(ctx, bookingId, "confirmation"),
-});
-
-export const sendBookingReminder = internalAction({
-  args: { bookingId: v.id("bookings") },
-  returns: v.null(),
-  handler: (ctx, { bookingId }) => notifyBooking(ctx, bookingId, "reminder"),
-});
-
-/** Hydrate the booking, apply the gates, compose, send. Every customer with an
- *  email gets booking notices. */
-async function notifyBooking(
-  ctx: ActionCtx,
-  bookingId: Id<"bookings">,
-  kind: "confirmation" | "reminder",
-): Promise<null> {
-  const info = await ctx.runQuery(internal.bookings.notificationContext, {
-    bookingId,
-  });
-  if (!info || info.status !== "confirmed") return null;
-  if (!info.customerEmail) return null;
-
-  const when = formatWhen(info.start, info.timezone);
-  const subject =
-    kind === "confirmation"
-      ? `Your appointment with ${info.businessName} is confirmed`
-      : `Reminder: your appointment with ${info.businessName}`;
-  const heading =
-    kind === "confirmation" ? "You're booked" : "Appointment reminder";
-  const intro =
-    kind === "confirmation"
-      ? `Hi ${info.customerName}, your appointment with ${info.businessName} is confirmed.`
-      : `Hi ${info.customerName}, this is a reminder of your upcoming appointment with ${info.businessName}.`;
-
-  const lines = [
-    `When: ${when}`,
-    info.serviceName ? `Service: ${info.serviceName}` : null,
-    info.staffName ? `With: ${info.staffName}` : null,
-  ].filter(Boolean);
-
-  // White-label (Professional+) drops the Omnivo attribution; every booking
-  // email is branded as the business either way, since it goes to *their*
-  // customer.
-  const whiteLabel = whiteLabelEnabled(info.tier);
-
-  // Sends via the tenant's verified custom domain (Resend) if set, else the
-  // platform SMTP account — both metered against the pooled email allowance.
-  await deliverBusinessEmail(ctx, {
-    businessId: info.businessId,
-    to: info.customerEmail,
-    fromName: info.businessName,
-    subject,
-    text: `${intro}\n\n${lines.join("\n")}\n\nSee you then!\n${info.businessName}${whiteLabel ? "" : "\n\nPowered by Omnivo AI"}`,
-    html: bookingEmailHtml({
-      brand: info.businessName,
-      poweredBy: !whiteLabel,
-      heading,
-      intro,
-      when,
-      serviceName: info.serviceName,
-      staffName: info.staffName,
-    }),
-  });
-  return null;
-}
-
-function formatWhen(startMs: number, timezone: string | null): string {
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: timezone ?? "UTC",
-    timeZoneName: "short",
-  }).format(new Date(startMs));
-}
-
 // --- Templates ---------------------------------------------------------------
 
 /** Shared branded card shell. `brand` sets the eyebrow (defaults to Omnivo AI);
@@ -420,36 +285,6 @@ function emailShell(
     </table>
   </body>
 </html>`;
-}
-
-function bookingEmailHtml(opts: {
-  brand: string;
-  poweredBy: boolean;
-  heading: string;
-  intro: string;
-  when: string;
-  serviceName: string | null;
-  staffName: string | null;
-}): string {
-  const row = (label: string, value: string) =>
-    `<tr><td style="padding:7px 0;font-size:13px;color:#9c9184;width:88px;vertical-align:top;">${label}</td><td style="padding:7px 0;font-size:15px;color:#ece4d8;font-weight:500;">${escapeHtml(value)}</td></tr>`;
-  const rows = [
-    row("When", opts.when),
-    opts.serviceName ? row("Service", opts.serviceName) : "",
-    opts.staffName ? row("With", opts.staffName) : "",
-  ].join("");
-
-  return emailShell(
-    `
-    <h1 style="margin:16px 0 8px;font-size:24px;line-height:1.2;color:#ece4d8;font-weight:600;">${escapeHtml(opts.heading)}</h1>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#9c9184;">${escapeHtml(opts.intro)}</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid rgba(236,228,216,0.12);border-bottom:1px solid rgba(236,228,216,0.12);margin:0 0 20px;">
-      ${rows}
-    </table>
-    <p style="margin:0;font-size:13px;line-height:1.6;color:#6b6357;">Need to change or cancel? Reply to this email and we'll help.</p>
-  `,
-    { brand: opts.brand, poweredBy: opts.poweredBy },
-  );
 }
 
 /** Escape then turn newlines into <br> for multi-line values in HTML emails. */

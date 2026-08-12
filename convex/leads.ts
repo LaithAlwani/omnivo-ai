@@ -67,9 +67,6 @@ export const list = query({
     return Promise.all(
       rows.map(async (l) => {
         const service = l.serviceId ? await ctx.db.get(l.serviceId) : null;
-        const staff = l.assignedStaffId
-          ? await ctx.db.get(l.assignedStaffId)
-          : null;
         return {
           _id: l._id,
           createdAt: l._creationTime,
@@ -83,8 +80,6 @@ export const list = query({
           source: l.source,
           serviceId: l.serviceId ?? null,
           serviceName: service?.name ?? null,
-          assignedStaffId: l.assignedStaffId ?? null,
-          assignedStaffName: staff?.name ?? null,
         };
       }),
     );
@@ -251,7 +246,7 @@ export const setStatus = mutation({
   },
 });
 
-/** Edit lead details — notes, assignment, contact info. */
+/** Edit lead details — notes, contact info. */
 export const update = mutation({
   args: {
     slug: v.string(),
@@ -260,7 +255,6 @@ export const update = mutation({
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
     notes: v.optional(v.string()),
-    assignedStaffId: v.optional(v.union(v.id("staff"), v.null())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -275,7 +269,6 @@ export const update = mutation({
       email?: string | undefined;
       phone?: string | undefined;
       notes?: string | undefined;
-      assignedStaffId?: import("./_generated/dataModel").Id<"staff"> | undefined;
       updatedAt: number;
     } = { updatedAt: Date.now() };
 
@@ -287,17 +280,6 @@ export const update = mutation({
     if (args.email !== undefined) patch.email = args.email.trim() || undefined;
     if (args.phone !== undefined) patch.phone = args.phone.trim() || undefined;
     if (args.notes !== undefined) patch.notes = args.notes.trim() || undefined;
-    if (args.assignedStaffId !== undefined) {
-      if (args.assignedStaffId === null) {
-        patch.assignedStaffId = undefined;
-      } else {
-        const staff = await ctx.db.get(args.assignedStaffId);
-        if (!staff || staff.businessId !== business._id) {
-          appError("NOT_FOUND", "That staff member no longer exists.");
-        }
-        patch.assignedStaffId = args.assignedStaffId;
-      }
-    }
 
     await ctx.db.patch(args.leadId, patch);
     return null;

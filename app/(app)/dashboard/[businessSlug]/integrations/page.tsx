@@ -42,9 +42,9 @@ function IntegrationsInner() {
       <div>
         <h1 className="font-display text-3xl text-bone">Integrations</h1>
         <p className="mt-1 text-sm text-muted">
-          Connect your own booking system and CRM. The assistant books through
-          your scheduler, and new leads, bookings, and reviews sync out to your
-          tools automatically.
+          Connect your own booking system and CRM — the assistant books through
+          your scheduler and syncs new leads out to your tools. Don&rsquo;t have
+          one yet? LA Digital can set up booking and CRM for you.
         </p>
         {installerManaged ? (
           <p className="mt-4 rounded-lg border border-line bg-surface/50 px-4 py-3 text-sm text-muted">
@@ -151,8 +151,8 @@ function BookingCard({
         <StatusPill conn={current} />
       </div>
       <p className="mt-1 text-sm text-muted">
-        Point the assistant at your own scheduler. Leave blank to use Omnivo&rsquo;s
-        built-in booking.
+        Point the assistant at your own scheduler. Without one connected, the
+        assistant captures the lead and hands off instead of booking.
       </p>
       <fieldset disabled={!canEdit || busy} className="mt-4 space-y-2">
         <input

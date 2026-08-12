@@ -25,10 +25,7 @@ export default function OverviewPage() {
   const tier = b.tier ?? "starter";
 
   const noActivity =
-    !loading &&
-    stats.conversations === 0 &&
-    stats.upcomingBookings === 0 &&
-    stats.totalLeads === 0;
+    !loading && stats.conversations === 0 && stats.totalLeads === 0;
 
   // Greeting reflects the real state of the account.
   let greet: React.ReactNode = b.name;
@@ -45,10 +42,10 @@ export default function OverviewPage() {
           {n} {n === 1 ? "lead" : "leads"} <Em>need</Em> you.
         </>
       );
-      greetSub = `${stats.conversationsThisMonth} conversation${stats.conversationsThisMonth === 1 ? "" : "s"} this month · ${stats.upcomingBookings} upcoming booking${stats.upcomingBookings === 1 ? "" : "s"}.`;
+      greetSub = `${stats.conversationsThisMonth} conversation${stats.conversationsThisMonth === 1 ? "" : "s"} this month · ${stats.totalLeads} lead${stats.totalLeads === 1 ? "" : "s"} total.`;
     } else {
       greet = <>Your assistant is <Em>humming</Em>.</>;
-      greetSub = `${stats.conversationsThisMonth} conversation${stats.conversationsThisMonth === 1 ? "" : "s"} this month · ${stats.upcomingBookings} upcoming booking${stats.upcomingBookings === 1 ? "" : "s"}.`;
+      greetSub = `${stats.conversationsThisMonth} conversation${stats.conversationsThisMonth === 1 ? "" : "s"} this month · ${stats.totalLeads} lead${stats.totalLeads === 1 ? "" : "s"} total.`;
     }
   }
 
@@ -64,12 +61,12 @@ export default function OverviewPage() {
               : "Add your first answer",
         },
         {
-          v: stats.upcomingBookings,
-          label: "Bookings",
+          v: stats.totalLeads,
+          label: "Total leads",
           sub:
-            stats.upcomingBookings > 0
-              ? `${stats.bookingsThisWeek} in the next 7 days`
-              : "Connect a calendar",
+            stats.totalLeads > 0
+              ? `${stats.openLeads} still open`
+              : "Share your assistant",
         },
         {
           v: stats.openLeads,
@@ -99,10 +96,10 @@ export default function OverviewPage() {
           href: `/dashboard/${b.slug}/business/knowledge`,
         },
         {
-          t: "Connect your calendar",
-          d: "So it can book without asking you",
-          done: stats.calendarConnected,
-          href: `/dashboard/${b.slug}/business/schedule`,
+          t: "Connect your booking & CRM",
+          d: "So the assistant works your existing tools",
+          done: false,
+          href: `/dashboard/${b.slug}/integrations`,
         },
         {
           t: "Put it on your website",

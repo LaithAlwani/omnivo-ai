@@ -4,7 +4,7 @@ import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { appError } from "./lib/errors";
-import { randomHex, sha256Hex } from "./lib/keys";
+import { sha256Hex } from "./lib/keys";
 import { enforceLimit } from "./rateLimiter";
 
 // -----------------------------------------------------------------------------
@@ -126,99 +126,6 @@ export const services = action({
   > => {
     const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
     return await ctx.runQuery(internal.services.listForBusiness, { businessId });
-  },
-});
-
-/** The bookable staff for the widget (Calendly links surface here too). */
-export const staff = action({
-  args: keyArgs,
-  handler: async (
-    ctx,
-    args,
-  ): Promise<
-    Array<{
-      _id: Id<"staff">;
-      name: string;
-      title: string | null;
-      externalBookingUrl: string | null;
-    }>
-  > => {
-    const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
-    return await ctx.runQuery(internal.staff.listBookableForBusiness, {
-      businessId,
-    });
-  },
-});
-
-/** Open slots for the widget/assistant. */
-export const slots = action({
-  args: {
-    ...keyArgs,
-    staffId: v.union(v.id("staff"), v.literal("any")),
-    fromMs: v.number(),
-    days: v.number(),
-    serviceId: v.optional(v.id("services")),
-  },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<Array<{ start: number; end: number; staffId: Id<"staff"> }>> => {
-    const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
-    return await ctx.runQuery(internal.slots.getSlotsForBusiness, {
-      businessId,
-      staffId: args.staffId,
-      fromMs: args.fromMs,
-      days: args.days,
-      serviceId: args.serviceId,
-    });
-  },
-});
-
-/** Book an appointment from the widget/assistant (source = widget). */
-export const book = action({
-  args: {
-    ...keyArgs,
-    staffId: v.union(v.id("staff"), v.literal("any")),
-    start: v.number(),
-    serviceId: v.optional(v.id("services")),
-    customerName: v.string(),
-    customerEmail: v.string(),
-    customerPhone: v.optional(v.string()),
-    note: v.optional(v.string()),
-  },
-  returns: v.object({
-    bookingId: v.id("bookings"),
-    staffId: v.id("staff"),
-    start: v.number(),
-    end: v.number(),
-    cancelToken: v.string(),
-  }),
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{
-    bookingId: Id<"bookings">;
-    staffId: Id<"staff">;
-    start: number;
-    end: number;
-    cancelToken: string;
-  }> => {
-    const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
-    await enforceLimit(ctx, "widgetBooking", businessId);
-    const cancelToken = randomHex(16);
-    const res = await ctx.runMutation(internal.bookings.createForBusiness, {
-      businessId,
-      staffId: args.staffId,
-      start: args.start,
-      serviceId: args.serviceId,
-      source: "widget",
-      cancelToken,
-      customerName: args.customerName,
-      customerEmail: args.customerEmail,
-      customerPhone: args.customerPhone,
-      note: args.note,
-    });
-    return { ...res, cancelToken };
   },
 });
 

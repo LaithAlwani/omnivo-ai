@@ -65,36 +65,21 @@ test("leads — capture (assistant/widget entry point)", async () => {
   expect(rows[0]).toMatchObject({ source: "assistant", status: "new" });
 });
 
-test("leads — assign to staff and edit notes", async () => {
+test("leads — edit notes and contact info", async () => {
   const { as } = await setup();
-  const staffId = await as.mutation(api.staff.add, {
-    slug: "clip",
-    name: "Jo",
-    bookable: true,
-  });
   const lead = await as.mutation(api.leads.create, { slug: "clip", name: "Pat" });
 
   await as.mutation(api.leads.update, {
     slug: "clip",
     leadId: lead,
-    assignedStaffId: staffId,
     notes: "left a voicemail",
+    email: "pat@x.com",
   });
-  let rows = await as.query(api.leads.list, { slug: "clip" });
+  const rows = await as.query(api.leads.list, { slug: "clip" });
   expect(rows[0]).toMatchObject({
-    assignedStaffId: staffId,
-    assignedStaffName: "Jo",
     notes: "left a voicemail",
+    email: "pat@x.com",
   });
-
-  // Unassign.
-  await as.mutation(api.leads.update, {
-    slug: "clip",
-    leadId: lead,
-    assignedStaffId: null,
-  });
-  rows = await as.query(api.leads.list, { slug: "clip" });
-  expect(rows[0].assignedStaffId).toBeNull();
 });
 
 test("leads — only a manager can delete", async () => {

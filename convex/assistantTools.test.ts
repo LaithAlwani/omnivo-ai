@@ -22,18 +22,6 @@ async function setup() {
   const business = await t.run((ctx) =>
     ctx.db.query("businesses").withIndex("by_slug", (q) => q.eq("slug", "clip")).unique(),
   );
-  const staffId = (await t.run((ctx) =>
-    ctx.db.query("staff").withIndex("by_business", (q) => q.eq("businessId", business!._id)).unique(),
-  ))!._id;
-  await as.mutation(api.availability.update, {
-    slug: "clip",
-    staffId,
-    availability: {
-      timezone: "UTC",
-      slotMinutes: 30,
-      week: Array.from({ length: 7 }, () => ({ intervals: [{ start: 540, end: 1020 }] })),
-    },
-  });
   await as.mutation(api.services.add, {
     slug: "clip",
     name: "Color",
@@ -53,13 +41,11 @@ const call = (
     businessId,
     timezone: "UTC",
     nowMs: Date.now(),
-    // These tests exercise availability + booking + lead tools.
     capabilities: ["availability", "booking", "qualification"],
     name,
     input,
   });
 
-// A valid upcoming slot: 09:00 UTC three days out, aligned to the 30-min step.
 function futureSlot(): number {
   const d = new Date();
   d.setUTCHours(9, 0, 0, 0);
@@ -75,15 +61,6 @@ test("tool list_services — formats the menu", async () => {
   expect(result).toContain("$120.00");
 });
 
-test("tool check_availability — returns bookable startMs values", async () => {
-  const { t, businessId } = await setup();
-  const { result } = await call(t, businessId, "check_availability", {
-    serviceName: "Color",
-    daysAhead: 7,
-  });
-  expect(result).toContain("startMs:");
-});
-
 test("tool check_availability — unknown service is reported, not invented", async () => {
   const { t, businessId } = await setup();
   const { result } = await call(t, businessId, "check_availability", {
@@ -92,50 +69,34 @@ test("tool check_availability — unknown service is reported, not invented", as
   expect(result.toLowerCase()).toContain("couldn't find");
 });
 
-test("tool book_appointment — books and tags the source assistant", async () => {
+test("tool check_availability — no scheduler connected → can't check", async () => {
   const { t, businessId } = await setup();
-  const start = futureSlot();
-  const { result } = await call(t, businessId, "book_appointment", {
-    startMs: start,
+  const { result } = await call(t, businessId, "check_availability", {
     serviceName: "Color",
-    customerName: "Web Visitor",
-    customerEmail: "visitor@x.com",
   });
-  expect(result).toContain("Booked");
-
-  const rows = await t.run((ctx) => ctx.db.query("bookings").collect());
-  expect(rows).toHaveLength(1);
-  expect(rows[0]).toMatchObject({ source: "assistant", start, status: "confirmed" });
-  expect(rows[0].end - rows[0].start).toBe(90 * 60_000);
+  expect(result.toLowerCase()).toContain("can't check");
 });
 
-test("tool book_appointment — refuses without name + email (no booking made)", async () => {
+test("tool book_appointment — refuses without name + email", async () => {
   const { t, businessId } = await setup();
   const { result } = await call(t, businessId, "book_appointment", {
     startMs: futureSlot(),
     serviceName: "Color",
   });
   expect(result.toLowerCase()).toContain("need");
-  const rows = await t.run((ctx) => ctx.db.query("bookings").collect());
-  expect(rows).toHaveLength(0);
 });
 
-test("tool book_appointment — a taken slot surfaces the conflict, not a crash", async () => {
-  const { t, businessId } = await setup();
-  const start = futureSlot();
-  await call(t, businessId, "book_appointment", {
-    startMs: start,
-    serviceName: "Color",
-    customerName: "First",
-    customerEmail: "first@x.com",
-  });
+test("tool book_appointment — no scheduler connected → hands off + captures a lead", async () => {
+  const { t, as, businessId } = await setup();
   const { result } = await call(t, businessId, "book_appointment", {
-    startMs: start,
+    startMs: futureSlot(),
     serviceName: "Color",
-    customerName: "Second",
-    customerEmail: "second@x.com",
+    customerName: "Web Visitor",
+    customerEmail: "visitor@x.com",
   });
-  expect(result.toLowerCase()).toContain("couldn't book");
+  expect(result.toLowerCase()).toContain("passed your details");
+  const leads = await as.query(api.leads.list, { slug: "clip" });
+  expect(leads[0]).toMatchObject({ name: "Web Visitor", source: "assistant" });
 });
 
 test("tool capture_lead — saves an assistant-sourced lead", async () => {

@@ -24,9 +24,9 @@ async function tenant(t: TestConvex<typeof schema>) {
   return { as, businessId };
 }
 
-// The Phase A structural acceptance: a connected provider drives an
-// agent-invocable capability end-to-end, with NO native code on the path.
-test("webhook booking provider handles availability + booking; native untouched", async () => {
+// A connected provider drives the booking capability end-to-end — it's the
+// only booking path (there is no native engine).
+test("webhook booking provider handles availability + booking", async () => {
   const t = convexTest(schema, modules);
   const { as, businessId } = await tenant(t);
 
@@ -77,10 +77,6 @@ test("webhook booking provider handles availability + booking; native untouched"
   });
   expect(booked.result.toLowerCase()).toContain("booked");
 
-  // No native booking row was written — the provider owned the whole path.
-  const rows = await t.run((ctx) => ctx.db.query("bookings").collect());
-  expect(rows).toHaveLength(0);
-
   // Both webhook endpoints were actually hit.
   expect(calls.some((c) => c.includes("/avail"))).toBe(true);
   expect(
@@ -88,18 +84,12 @@ test("webhook booking provider handles availability + booking; native untouched"
   ).toBe(true);
 });
 
-// With no provider connected, the resolver routes to the native engine and
-// never touches a vendor endpoint. (Successful native booking end-to-end is
-// covered by the wider suite, e.g. locations.test.ts.)
-test("native fallback: no provider → native engine, no webhook IO", async () => {
+// With no scheduler connected, booking isn't possible — the agent captures the
+// lead and hands off instead of booking.
+test("no provider connected → book_appointment hands off + captures a lead", async () => {
   const t = convexTest(schema, modules);
   const { businessId } = await tenant(t);
   const soon = Date.now() + 2 * 86_400_000;
-
-  const fetchSpy = vi.fn(async () => {
-    throw new Error("no external call should happen on the native path");
-  });
-  vi.stubGlobal("fetch", fetchSpy);
 
   const res = await t.action(internal.assistantTools.execute, {
     businessId,
@@ -110,8 +100,9 @@ test("native fallback: no provider → native engine, no webhook IO", async () =
     input: { startMs: soon, customerName: "Ada", customerEmail: "ada@x.com" },
   });
 
-  // The native engine answered (it validates against real availability); a
-  // vendor endpoint was never called.
-  expect(fetchSpy).not.toHaveBeenCalled();
-  expect(res.result.length).toBeGreaterThan(0);
+  // Hand-off message, and the details landed as a lead for the team.
+  expect(res.result.toLowerCase()).toContain("passed your details");
+  const leads = await t.run((ctx) => ctx.db.query("leads").collect());
+  expect(leads).toHaveLength(1);
+  expect(leads[0].name).toBe("Ada");
 });

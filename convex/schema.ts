@@ -124,24 +124,15 @@ export default defineSchema({
       model: v.optional(v.string()),
       guardrails: v.optional(v.string()),
     }),
-    // Booking guardrails. Absent fields fall back to sane defaults (see
-    // lib/bookingRules.ts): no minimum notice, 60-day window, no buffer.
-    bookingPolicy: v.optional(
-      v.object({
-        minNoticeMinutes: v.number(), // can't book within this many minutes
-        maxAdvanceDays: v.number(), // can't book further out than this
-        bufferMinutes: v.number(), // enforced gap around every appointment
-      }),
-    ),
     templateId: v.optional(v.string()),
   })
     .index("by_slug", ["slug"])
     .index("by_account", ["accountId"])
     .index("by_embedKeyPrefix", ["embedKeyPrefix"]),
 
-  // A physical/bookable site within a project. Every project has at least one
-  // (seeded on creation); the plan's `locationLimit` caps how many. Staff and
-  // bookings are scoped to a location, so the assistant books at the right site.
+  // A physical site within a project. Every project has at least one (seeded on
+  // creation); the plan's `locationLimit` caps how many, and locations are the
+  // billable unit (extra ones are a paid add-on).
   locations: defineTable({
     businessId: v.id("businesses"),
     name: v.string(),
@@ -163,29 +154,6 @@ export default defineSchema({
     .index("by_business", ["businessId"])
     .index("by_user_business", ["userId", "businessId"]),
 
-  // A bookable resource. `userId` optional — a login-less staff member is a
-  // manager-managed calendar with no account.
-  staff: defineTable({
-    businessId: v.id("businesses"),
-    userId: v.optional(v.id("users")),
-    // The location this resource works at. Optional only during the location
-    // backfill migration; treated as set afterward.
-    locationId: v.optional(v.id("locations")),
-    name: v.string(),
-    email: v.optional(v.string()),
-    title: v.optional(v.string()),
-    bookable: v.boolean(),
-    // Calendly-style hand-off: when set, this person books through an external
-    // link — the assistant hands the client off instead of offering internal
-    // slots, and no calendar/availability is managed here.
-    externalBookingUrl: v.optional(v.string()),
-    active: v.boolean(),
-    order: v.number(),
-  })
-    .index("by_business", ["businessId"])
-    .index("by_business_active", ["businessId", "active"])
-    .index("by_user", ["userId"]),
-
   // Operators allowed into the cross-tenant support portal. Kept tiny.
   platformAdmins: defineTable({
     userId: v.id("users"),
@@ -193,113 +161,21 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_user", ["userId"]),
 
-  // Appointments. `start`/`end` are UTC ms. Double-booking is prevented in the
-  // booking mutation (a transaction) via an overlap check on by_staff_start.
-  bookings: defineTable({
-    businessId: v.id("businesses"),
-    staffId: v.id("staff"),
-    // The location the appointment is at (derived from the booked staff).
-    // Optional only during the location backfill migration.
-    locationId: v.optional(v.id("locations")),
-    start: v.number(),
-    end: v.number(),
-    status: v.union(v.literal("confirmed"), v.literal("cancelled")),
-    customerName: v.string(),
-    customerEmail: v.string(),
-    customerPhone: v.optional(v.string()),
-    serviceId: v.optional(v.id("services")),
-    note: v.optional(v.string()),
-    cancelToken: v.string(),
-    calendarEventId: v.optional(v.string()), // event created on the staff's calendar
-    // Set when the SMS reminder is dispatched, so the reminder cron sends exactly
-    // once per booking (idempotency guard — patched before the send is scheduled).
-    reminderSentAt: v.optional(v.number()),
-    // Set when a post-service review request is dispatched (same idempotency
-    // pattern) so the Review Management cron asks exactly once per booking.
-    reviewRequestSentAt: v.optional(v.number()),
-    source: v.union(
-      v.literal("dashboard"),
-      v.literal("assistant"),
-      v.literal("widget"),
-    ),
-  })
-    .index("by_staff_start", ["staffId", "start"])
-    .index("by_business_start", ["businessId", "start"])
-    .index("by_cancelToken", ["cancelToken"]),
-
-  // Per-staff external calendar connection (Google or Microsoft). One per staff.
-  calendarConnections: defineTable({
-    businessId: v.id("businesses"),
-    staffId: v.id("staff"),
-    provider: v.union(v.literal("google"), v.literal("microsoft")),
-    accessToken: v.string(),
-    refreshToken: v.string(),
-    expiryMs: v.number(),
-    email: v.optional(v.string()),
-    calendarId: v.string(), // "primary" (Google) / "primary" placeholder (Graph /me)
-  })
-    .index("by_staff", ["staffId"])
-    .index("by_business", ["businessId"]),
-
-  // Time off / holidays. `staffId` absent = the whole business is closed for
-  // the span. Blocks slot generation and booking, like a busy span.
-  blackouts: defineTable({
-    businessId: v.id("businesses"),
-    staffId: v.optional(v.id("staff")),
-    start: v.number(),
-    end: v.number(),
-    reason: v.optional(v.string()),
-  })
-    .index("by_business_start", ["businessId", "start"])
-    .index("by_staff_start", ["staffId", "start"]),
-
-  // Cached free/busy spans per staff — subtracted from open slots.
-  calendarBusy: defineTable({
-    businessId: v.id("businesses"),
-    staffId: v.id("staff"),
-    start: v.number(),
-    end: v.number(),
-  })
-    .index("by_staff_start", ["staffId", "start"])
-    .index("by_business", ["businessId"]),
-
-  // Bookable services — what a customer books (a haircut, a color, a consult).
-  // `durationMinutes` drives the slot length; `priceCents` is optional (call-for-
-  // price / free). `staffIds` limits who performs it — empty/absent = anyone
-  // bookable. The assistant offers these by name and books the right duration.
+  // Services the business offers — what the assistant lists by name and price
+  // (`list_services`). Business knowledge, not a booking primitive.
   services: defineTable({
     businessId: v.id("businesses"),
     name: v.string(),
     durationMinutes: v.number(),
     priceCents: v.optional(v.number()),
     description: v.optional(v.string()),
-    staffIds: v.optional(v.array(v.id("staff"))),
     active: v.boolean(),
     order: v.number(),
   }).index("by_business", ["businessId"]),
 
-  // Per-staff weekly availability. One row per staff. `week` has 7 entries
-  // (index 0 = Sunday); each holds open time intervals in minutes-from-midnight,
-  // interpreted in `timezone`. `slotMinutes` is the appointment/slot length.
-  availabilityRules: defineTable({
-    businessId: v.id("businesses"),
-    staffId: v.id("staff"),
-    timezone: v.string(),
-    slotMinutes: v.number(),
-    week: v.array(
-      v.object({
-        intervals: v.array(
-          v.object({ start: v.number(), end: v.number() }),
-        ),
-      }),
-    ),
-  })
-    .index("by_business", ["businessId"])
-    .index("by_staff", ["staffId"]),
-
   // Leads — captured interest (from the assistant, widget, or entered by hand).
   // A simple pipeline: new → contacted → qualified → won/lost. `notes` is a
-  // free-text internal scratchpad; `assignedStaffId` optionally routes ownership.
+  // free-text internal scratchpad.
   leads: defineTable({
     businessId: v.id("businesses"),
     name: v.string(),
@@ -307,7 +183,6 @@ export default defineSchema({
     phone: v.optional(v.string()),
     message: v.optional(v.string()), // what the lead asked about
     serviceId: v.optional(v.id("services")), // service they showed interest in
-    assignedStaffId: v.optional(v.id("staff")),
     status: leadStatusValidator,
     source: contactSourceValidator,
     notes: v.optional(v.string()),

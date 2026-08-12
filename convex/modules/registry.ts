@@ -46,8 +46,8 @@ export const MODULE_CATALOG: ModuleInfo[] = [
   {
     key: "booking",
     name: "Booking",
-    blurb: "Book into the client's own scheduler, or Omnivo's Managed calendar.",
-    grants: "Availability + booking tools (connected provider or Managed).",
+    blurb: "Book into the client's own connected scheduler.",
+    grants: "Availability + booking tools (via the connected scheduler).",
   },
   {
     key: "leadQualification",
@@ -201,15 +201,16 @@ export function toolAllowed(name: string, caps: Set<Capability>): boolean {
 export interface PromptContext {
   timezone?: string | null;
   nowIso: string;
-  /** Where bookings land, so the assistant can say so honestly. */
-  bookingSystem?: "external" | "native" | null;
+  /** Whether a connected scheduler is available (bookings land in the client's
+   *  own system). Null when there's no booking connection. */
+  bookingSystem?: "external" | null;
 }
 
 /** Instruction fragments appended to the base system prompt, one per active
  *  capability, so the model knows how to use the tools it's been given. */
 export function promptFragments(
   caps: Set<Capability>,
-  { timezone, nowIso, bookingSystem }: PromptContext,
+  { timezone, nowIso }: PromptContext,
 ): string[] {
   const fragments: string[] = [];
 
@@ -217,9 +218,7 @@ export function promptFragments(
     ? `The business timezone is ${timezone}; read dates like "next Tuesday" in that zone.`
     : "Interpret times in UTC.";
   const wherePlaced =
-    bookingSystem === "external"
-      ? "Bookings are placed directly in the business's own scheduling system."
-      : "Bookings are placed in the business's Omnivo calendar.";
+    "Bookings are placed directly in the business's own scheduling system.";
 
   if (caps.has("booking")) {
     // Full booking: read availability + place the booking.

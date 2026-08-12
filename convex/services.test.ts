@@ -3,12 +3,8 @@ import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import type { Id } from "./_generated/dataModel";
 
 const modules = import.meta.glob("./**/*.ts");
-
-const HOUR = 3_600_000;
-const START = Date.UTC(2030, 5, 3, 9, 0); // 09:00 UTC, fixed date
 
 async function setup() {
   const t = convexTest(schema, modules);
@@ -22,143 +18,57 @@ async function setup() {
     embedKeyHash: "hh",
     embedKey: "ek_pp.x",
   });
+  return { t, as };
+}
+
+test("services — add, list, update, and remove", async () => {
+  const { as } = await setup();
+  const svc = await as.mutation(api.services.add, {
+    slug: "clip",
+    name: "Color",
+    durationMinutes: 90,
+    priceCents: 12000,
+  });
+  let list = await as.query(api.services.list, { slug: "clip" });
+  expect(list).toHaveLength(1);
+  expect(list[0]).toMatchObject({
+    name: "Color",
+    durationMinutes: 90,
+    priceCents: 12000,
+  });
+
+  await as.mutation(api.services.update, {
+    slug: "clip",
+    serviceId: svc,
+    name: "Full Color",
+  });
+  list = await as.query(api.services.list, { slug: "clip" });
+  expect(list[0].name).toBe("Full Color");
+
+  await as.mutation(api.services.remove, { slug: "clip", serviceId: svc });
+  list = await as.query(api.services.list, { slug: "clip" });
+  expect(list).toHaveLength(0);
+});
+
+test("services — the public menu lists active services only", async () => {
+  const { t, as } = await setup();
+  await as.mutation(api.services.add, { slug: "clip", name: "Cut", durationMinutes: 30 });
+  await as.mutation(api.services.add, { slug: "clip", name: "Hidden", durationMinutes: 30 });
+  const all = await as.query(api.services.list, { slug: "clip" });
+  const hidden = all.find((s) => s.name === "Hidden")!;
+  await as.mutation(api.services.update, {
+    slug: "clip",
+    serviceId: hidden._id,
+    active: false,
+  });
+
   const business = await t.run((ctx) =>
     ctx.db.query("businesses").withIndex("by_slug", (q) => q.eq("slug", "clip")).unique(),
   );
-  const staff = await t.run((ctx) =>
-    ctx.db.query("staff").withIndex("by_business", (q) => q.eq("businessId", business!._id)).unique(),
-  );
-  // 09:00–17:00 daily, 30-min step.
-  await as.mutation(api.availability.update, {
-    slug: "clip",
-    staffId: staff!._id,
-    availability: {
-      timezone: "UTC",
-      slotMinutes: 30,
-      week: Array.from({ length: 7 }, () => ({ intervals: [{ start: 540, end: 1020 }] })),
-    },
+  const menu = await t.query(internal.services.listForBusiness, {
+    businessId: business!._id,
   });
-  return { t, as, owner, business: business!, staffId: staff!._id };
-}
-
-const bookArgs = (
-  staffId: string,
-  start: number,
-  token: string,
-  serviceId?: Id<"services">,
-) => ({
-  slug: "clip",
-  staffId: staffId as never,
-  start,
-  serviceId,
-  source: "dashboard" as const,
-  cancelToken: token,
-  customerName: "Sam",
-  customerEmail: "sam@x.com",
-});
-
-test("service duration — a 90-min service books a 90-min appointment", async () => {
-  const { as, staffId } = await setup();
-  const svc = await as.mutation(api.services.add, {
-    slug: "clip",
-    name: "Color",
-    durationMinutes: 90,
-  });
-
-  const res = await as.mutation(internal.bookings.create, bookArgs(staffId, START, "t1", svc));
-  expect(res.end - res.start).toBe(90 * 60_000);
-});
-
-test("service duration — a longer service removes overlapping start times", async () => {
-  const { as, staffId } = await setup();
-  const svc = await as.mutation(api.services.add, {
-    slug: "clip",
-    name: "Color",
-    durationMinutes: 90,
-  });
-
-  // Book a 90-min color at 09:00 → 10:30.
-  await as.mutation(internal.bookings.create, bookArgs(staffId, START, "t1", svc));
-
-  // The 09:30 and 10:00 starts can no longer host another 90-min service.
-  const slots = await as.query(api.slots.getSlots, {
-    slug: "clip",
-    staffId,
-    serviceId: svc,
-    fromMs: START - HOUR,
-    days: 1,
-  });
-  const starts = slots.map((s) => s.start);
-  expect(starts).not.toContain(START + 30 * 60_000); // 09:30
-  expect(starts).not.toContain(START + 60 * 60_000); // 10:00
-  expect(starts).toContain(START + 90 * 60_000); // 10:30 is free
-  // Each offered slot is 90 minutes long.
-  for (const s of slots) expect(s.end - s.start).toBe(90 * 60_000);
-});
-
-test("service duration — one that won't fit before close is not offered", async () => {
-  const { as, staffId } = await setup();
-  // 8-hour service can never fit an 8-hour day starting after 09:00.
-  const svc = await as.mutation(api.services.add, {
-    slug: "clip",
-    name: "All day",
-    durationMinutes: 481, // > 480 minutes (09:00–17:00)
-  });
-  const slots = await as.query(api.slots.getSlots, {
-    slug: "clip",
-    staffId,
-    serviceId: svc,
-    fromMs: START - HOUR,
-    days: 1,
-  });
-  expect(slots).toHaveLength(0);
-});
-
-test("service staff filter — only assigned staff perform it", async () => {
-  const { as, t, business, staffId } = await setup();
-  // A second bookable staff with the same availability.
-  const other = await as.mutation(api.staff.add, { slug: "clip", name: "Jo", bookable: true });
-  await as.mutation(api.availability.update, {
-    slug: "clip",
-    staffId: other,
-    availability: {
-      timezone: "UTC",
-      slotMinutes: 30,
-      week: Array.from({ length: 7 }, () => ({ intervals: [{ start: 540, end: 1020 }] })),
-    },
-  });
-
-  // Service performed only by `other`.
-  const svc = await as.mutation(api.services.add, {
-    slug: "clip",
-    name: "Special",
-    durationMinutes: 30,
-    staffIds: [other],
-  });
-
-  // Booking it against the un-assigned default staff is rejected.
-  await expect(
-    as.mutation(internal.bookings.create, bookArgs(staffId, START, "t1", svc)),
-  ).rejects.toMatchObject({ data: { code: "CONFLICT" } });
-
-  // "any" assigns to the one who performs it.
-  const res = await as.mutation(internal.bookings.create, bookArgs("any", START, "t2", svc));
-  expect(res.staffId).toBe(other);
-  void t;
-  void business;
-});
-
-test("service — inactive service can't be booked", async () => {
-  const { as, staffId } = await setup();
-  const svc = await as.mutation(api.services.add, {
-    slug: "clip",
-    name: "Retired",
-    durationMinutes: 30,
-  });
-  await as.mutation(api.services.update, { slug: "clip", serviceId: svc, active: false });
-  await expect(
-    as.mutation(internal.bookings.create, bookArgs(staffId, START, "t1", svc)),
-  ).rejects.toMatchObject({ data: { code: "NOT_FOUND" } });
+  expect(menu.map((s) => s.name)).toEqual(["Cut"]);
 });
 
 test("service validation — rejects a bad duration", async () => {

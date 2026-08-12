@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Doc, Id } from "@/convex/_generated/dataModel";
+import type { Id } from "@/convex/_generated/dataModel";
 import { errorText } from "@/lib/errors";
 import { useConfirm } from "@/components/ui/confirm";
 import {
@@ -56,7 +56,6 @@ export default function LeadsPage() {
   const counts = useQuery(api.leads.counts, { slug: b.slug });
   const [filter, setFilter] = useState<Status | "all">("all");
   const leads = useLeads(b.slug, filter);
-  const staff = useQuery(api.staff.list, { slug: b.slug });
 
   return (
     <div className="max-w-4xl">
@@ -97,7 +96,6 @@ export default function LeadsPage() {
             key={l._id}
             slug={b.slug}
             lead={l}
-            staff={staff ?? []}
             canDelete={canDelete}
           />
         ))}
@@ -237,12 +235,10 @@ function AddLead({ slug }: { slug: string }) {
 function LeadCard({
   slug,
   lead,
-  staff,
   canDelete,
 }: {
   slug: string;
   lead: Lead;
-  staff: Doc<"staff">[];
   canDelete: boolean;
 }) {
   const setStatus = useMutation(api.leads.setStatus);
@@ -342,30 +338,6 @@ function LeadCard({
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        {staff.length > 0 && (
-          <select
-            value={lead.assignedStaffId ?? ""}
-            onChange={(e) =>
-              act(() =>
-                update({
-                  slug,
-                  leadId: lead._id as Id<"leads">,
-                  assignedStaffId: e.target.value
-                    ? (e.target.value as Id<"staff">)
-                    : null,
-                }),
-              )
-            }
-            className="h-8 rounded-lg border border-line-strong bg-surface pl-2 pr-6 text-xs text-bone-dim outline-none focus:border-ember"
-          >
-            <option value="">Unassigned</option>
-            {staff.map((s) => (
-              <option key={s._id} value={s._id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        )}
         <input
           defaultValue={lead.notes ?? ""}
           placeholder="Internal notes…"

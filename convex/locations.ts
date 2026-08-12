@@ -177,17 +177,6 @@ export const remove = mutation({
     if (!location || location.businessId !== business._id) {
       appError("NOT_FOUND", "That location no longer exists.");
     }
-    // Don't orphan staff: refuse deletion while any staff is assigned here.
-    const staffHere = await ctx.db
-      .query("staff")
-      .withIndex("by_business", (q) => q.eq("businessId", business._id))
-      .collect();
-    if (staffHere.some((s) => s.locationId === args.locationId)) {
-      appError(
-        "CONFLICT",
-        "Move or remove the team members at this location first.",
-      );
-    }
     // Keep at least one location per project.
     const all = await ctx.db
       .query("locations")

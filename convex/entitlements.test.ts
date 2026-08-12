@@ -127,8 +127,4 @@ test("execution re-checks entitlement — booking refused when the module is off
     },
   });
   expect(result.toLowerCase()).toContain("isn't something i can do");
-
-  // No booking was created.
-  const rows = await t.run((ctx) => ctx.db.query("bookings").collect());
-  expect(rows).toHaveLength(0);
 });

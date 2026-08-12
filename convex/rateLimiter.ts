@@ -17,8 +17,7 @@ import { appError } from "./lib/errors";
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // AI chat — the expensive one (each call can fan out to the model + tools).
   widgetChat: { kind: "token bucket", rate: 30, period: MINUTE, capacity: 45 },
-  // Public writes — hard caps to stop booking / lead spam.
-  widgetBooking: { kind: "fixed window", rate: 12, period: MINUTE },
+  // Public writes — a hard cap to stop lead spam.
   widgetLead: { kind: "fixed window", rate: 12, period: MINUTE },
   // Marketing "Book a demo" form. This surface has no tenant, so the limits are
   // platform-wide: a per-email cap stops one address from flooding the inbox,
@@ -46,7 +45,7 @@ function tooManyRequests(retryAfter?: number): never {
  *  (with a user-readable retry hint) when the tenant is over its quota. */
 export async function enforceLimit(
   ctx: ActionCtx,
-  name: "widgetChat" | "widgetBooking" | "widgetLead",
+  name: "widgetChat" | "widgetLead",
   businessId: Id<"businesses">,
 ): Promise<void> {
   const { ok, retryAfter } = await rateLimiter.limit(ctx, name, {

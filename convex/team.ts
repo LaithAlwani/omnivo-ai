@@ -7,9 +7,8 @@ import { appError } from "./lib/errors";
 import { roleValidator } from "./schema";
 
 // -----------------------------------------------------------------------------
-// Team — members (people with dashboard logins, scoped by `memberships`).
-// Staff/calendars live in ./staff. Every mutation is manager-gated and keeps at
-// least one owner.
+// Team — members (people with dashboard logins, scoped by `memberships`). Every
+// mutation is manager-gated and keeps at least one owner.
 // -----------------------------------------------------------------------------
 
 async function countOwners(ctx: QueryCtx, businessId: Id<"businesses">) {
@@ -29,95 +28,18 @@ export const listMembers = query({
       .withIndex("by_business", (q) => q.eq("businessId", business._id))
       .collect();
 
-    // Map each login to the staff row it manages (if any), for the link control.
-    const staff = await ctx.db
-      .query("staff")
-      .withIndex("by_business", (q) => q.eq("businessId", business._id))
-      .collect();
-    const staffByUser = new Map(
-      staff.filter((s) => s.userId).map((s) => [s.userId as Id<"users">, s]),
-    );
-
     return Promise.all(
       memberships.map(async (m) => {
         const user = await ctx.db.get(m.userId);
-        const linked = staffByUser.get(m.userId);
         return {
           membershipId: m._id,
           role: m.role,
           email: user?.email ?? "(unknown)",
           name: user?.name ?? null,
           isSelf: m.userId === me,
-          linkedStaffId: linked?._id ?? null,
-          linkedStaffName: linked?.name ?? null,
         };
       }),
     );
-  },
-});
-
-/**
- * Link a member's login to a bookable staff row (or unlink). A linked member
- * self-manages that calendar's availability + connection. One login ↔ one staff
- * row per business, so linking first unlinks any existing tie.
- *   target: "none" → unlink · "create" → new bookable staff row · <staffId> → existing
- */
-export const linkStaff = mutation({
-  args: {
-    slug: v.string(),
-    membershipId: v.id("memberships"),
-    target: v.union(v.literal("none"), v.literal("create"), v.id("staff")),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const { business } = await requireMemberBySlug(ctx, args.slug, "admin");
-    const membership = await ctx.db.get(args.membershipId);
-    if (!membership || membership.businessId !== business._id) {
-      appError("NOT_FOUND", "That member no longer exists.");
-    }
-    const userId = membership.userId;
-
-    // Unlink whatever this user is currently tied to in this business.
-    const current = await ctx.db
-      .query("staff")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
-    for (const s of current) {
-      if (s.businessId === business._id) {
-        await ctx.db.patch(s._id, { userId: undefined });
-      }
-    }
-
-    if (args.target === "none") return null;
-
-    if (args.target === "create") {
-      const user = await ctx.db.get(userId);
-      const existing = await ctx.db
-        .query("staff")
-        .withIndex("by_business", (q) => q.eq("businessId", business._id))
-        .collect();
-      const order = existing.reduce((m, s) => Math.max(m, s.order), -1) + 1;
-      await ctx.db.insert("staff", {
-        businessId: business._id,
-        userId,
-        name: user?.name ?? user?.email ?? "Staff",
-        email: user?.email ?? undefined,
-        bookable: true,
-        active: true,
-        order,
-      });
-      return null;
-    }
-
-    const staff = await ctx.db.get(args.target);
-    if (!staff || staff.businessId !== business._id) {
-      appError("NOT_FOUND", "That staff member no longer exists.");
-    }
-    if (staff.userId && staff.userId !== userId) {
-      appError("CONFLICT", "That calendar is already linked to another member.");
-    }
-    await ctx.db.patch(staff._id, { userId });
-    return null;
   },
 });
 

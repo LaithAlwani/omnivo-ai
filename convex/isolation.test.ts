@@ -60,8 +60,8 @@ test("tenant isolation — a member of one business cannot read another's", asyn
   ).rejects.toMatchObject({ data: { code: "UNAUTHENTICATED" } });
 });
 
-// Onboarding creates the owner membership + a default calendar in one shot.
-test("onboarding — creator becomes owner with a default staff calendar", async () => {
+// Onboarding creates the owner membership + a default location in one shot.
+test("onboarding — creator becomes owner with a default location", async () => {
   const t = convexTest(schema, modules);
   const user = await t.run((ctx) =>
     ctx.db.insert("users", { email: "owner@example.com" }),
@@ -77,23 +77,23 @@ test("onboarding — creator becomes owner with a default staff calendar", async
     embedKey: "ek_cccccc.c",
   });
 
-  const { membership, staff } = await t.run(async (ctx) => {
+  const { membership, locations } = await t.run(async (ctx) => {
     const membership = await ctx.db
       .query("memberships")
       .withIndex("by_user_business", (q) =>
         q.eq("userId", user).eq("businessId", businessId),
       )
       .unique();
-    const staff = await ctx.db
-      .query("staff")
+    const locations = await ctx.db
+      .query("locations")
       .withIndex("by_business", (q) => q.eq("businessId", businessId))
       .collect();
-    return { membership, staff };
+    return { membership, locations };
   });
 
   expect(membership?.role).toBe("owner");
-  expect(staff).toHaveLength(1);
-  expect(staff[0].bookable).toBe(true);
+  expect(locations).toHaveLength(1);
+  expect(locations[0].active).toBe(true);
 });
 
 // Slug collisions are rejected — one namespace, first come first served.

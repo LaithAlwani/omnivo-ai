@@ -2,7 +2,6 @@ import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
 import { toolAllowed, type Capability } from "./modules/registry";
 import {
   resolveBookingProvider,
@@ -83,9 +82,6 @@ export const execute = internalAction({
     const services = await ctx.runQuery(internal.services.listForBusiness, {
       businessId: args.businessId,
     });
-    const staff = await ctx.runQuery(internal.staff.listBookableForBusiness, {
-      businessId: args.businessId,
-    });
     const locations = await ctx.runQuery(
       internal.locations.listActiveForBusiness,
       { businessId: args.businessId },
@@ -93,8 +89,6 @@ export const execute = internalAction({
     const i = args.input;
     const findService = (n?: string) =>
       n ? services.find((s) => s.name.toLowerCase() === n.toLowerCase()) ?? null : null;
-    const findStaff = (n?: string) =>
-      n ? staff.find((s) => s.name.toLowerCase() === n.toLowerCase()) ?? null : null;
     const findLocation = (n?: string) =>
       n
         ? locations.find((l) => l.name.toLowerCase() === n.toLowerCase()) ?? null
@@ -117,36 +111,15 @@ export const execute = internalAction({
       }
 
       case "check_availability": {
-        let serviceId: Id<"services"> | undefined;
-        if (i.serviceName) {
-          const svc = findService(i.serviceName);
-          if (!svc) {
-            return result(
-              `I couldn't find a service called "${i.serviceName}". We offer: ${services.map((s) => s.name).join(", ") || "nothing yet"}.`,
-            );
-          }
-          serviceId = svc._id;
+        if (i.serviceName && !findService(i.serviceName)) {
+          return result(
+            `I couldn't find a service called "${i.serviceName}". We offer: ${services.map((s) => s.name).join(", ") || "nothing yet"}.`,
+          );
         }
-        let staffId: Id<"staff"> | "any" = "any";
-        if (i.staffName) {
-          const st = findStaff(i.staffName);
-          if (!st) return result(`I couldn't find anyone named "${i.staffName}".`);
-          if (st.externalBookingUrl) {
-            return result(
-              `${st.name} books through their own link: ${st.externalBookingUrl}`,
-            );
-          }
-          staffId = st._id;
-        }
-        let locationId: Id<"locations"> | undefined;
-        if (i.locationName) {
-          const loc = findLocation(i.locationName);
-          if (!loc) {
-            return result(
-              `I couldn't find a location called "${i.locationName}". We have: ${locations.map((l) => l.name).join(", ") || "one location"}.`,
-            );
-          }
-          locationId = loc._id;
+        if (i.locationName && !findLocation(i.locationName)) {
+          return result(
+            `I couldn't find a location called "${i.locationName}". We have: ${locations.map((l) => l.name).join(", ") || "one location"}.`,
+          );
         }
         const days = Math.max(1, Math.min(i.daysAhead ?? 14, 30));
 
@@ -161,9 +134,6 @@ export const execute = internalAction({
           days,
           serviceName: i.serviceName,
           locationName: i.locationName,
-          serviceId,
-          staffId,
-          locationId,
         });
         if (slots.length === 0) {
           return result(`No open times in the next ${days} days.`);
@@ -182,16 +152,10 @@ export const execute = internalAction({
             "To book I need: the chosen time (startMs from availability), the customer's name, and their email.",
           );
         }
-        const svc = findService(i.serviceName);
-        if (i.serviceName && !svc) {
+        if (i.serviceName && !findService(i.serviceName)) {
           return result(`I couldn't find a service called "${i.serviceName}".`);
         }
-        const st = findStaff(i.staffName);
-        if (i.staffName && !st) {
-          return result(`I couldn't find anyone named "${i.staffName}".`);
-        }
-        const loc = findLocation(i.locationName);
-        if (i.locationName && !loc) {
+        if (i.locationName && !findLocation(i.locationName)) {
           return result(`I couldn't find a location called "${i.locationName}".`);
         }
 
@@ -215,9 +179,6 @@ export const execute = internalAction({
             serviceName: i.serviceName,
             staffName: i.staffName,
             locationName: i.locationName,
-            serviceId: svc?._id,
-            staffId: st?._id,
-            locationId: loc?._id,
             customerName: i.customerName,
             customerEmail: i.customerEmail,
             customerPhone: i.customerPhone,
@@ -227,11 +188,8 @@ export const execute = internalAction({
               "I couldn't complete that booking in the scheduling system — please try another time.",
             );
           }
-          const who =
-            (res.staffId && staff.find((s) => s._id === res.staffId)?.name) ||
-            "our team";
           return result(
-            `Booked ✅ ${fmt(res.start)} with ${who}. A confirmation will go to ${i.customerEmail}.`,
+            `Booked ✅ ${fmt(res.start)}. A confirmation will go to ${i.customerEmail}.`,
           );
         } catch (e) {
           return result(`Couldn't book that: ${errMessage(e)}`);

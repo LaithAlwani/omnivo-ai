@@ -183,24 +183,12 @@ export const provision = internalMutation({
       role: "owner",
     });
 
-    // Every project starts with one location; the default calendar lives there.
-    const locationId = await ensureDefaultLocation(ctx, businessId);
+    // Every project starts with one location (the billable unit).
+    await ensureDefaultLocation(ctx, businessId);
 
-    // Seed module entitlements from the plan's bundle (Starter = Booking + Lead
-    // Capture; higher tiers add more). Re-synced whenever the plan changes.
+    // Seed module entitlements from the plan's bundle (all tiers include the
+    // connector modules). Re-synced whenever the plan changes.
     await syncEntitlementsToPlan(ctx, businessId, plan);
-
-    // Default shared calendar: a login-less resource named "Main" so booking
-    // works before any employees are added. Renamed from the business name so
-    // it reads as a calendar, not a person, on the Team page.
-    await ctx.db.insert("staff", {
-      businessId,
-      locationId,
-      name: "Main",
-      bookable: true,
-      active: true,
-      order: 0,
-    });
 
     // Seed the assistant's knowledge from the wizard so it can answer right
     // away. Only written when the wizard actually supplied something — otherwise
@@ -537,44 +525,6 @@ export const setTimezone = mutation({
   },
 });
 
-/** Set the booking guardrails: lead time, booking window, buffer (manager). */
-export const setBookingPolicy = mutation({
-  args: {
-    slug: v.string(),
-    policy: v.object({
-      minNoticeMinutes: v.number(),
-      maxAdvanceDays: v.number(),
-      bufferMinutes: v.number(),
-    }),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const business = await ctx.db
-      .query("businesses")
-      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
-      .unique();
-    if (!business) appError("NOT_FOUND", "That business doesn't exist.");
-    await requireMember(ctx, business._id, "admin");
-
-    const { minNoticeMinutes, maxAdvanceDays, bufferMinutes } = args.policy;
-    if (
-      minNoticeMinutes < 0 ||
-      bufferMinutes < 0 ||
-      maxAdvanceDays < 1 ||
-      maxAdvanceDays > 365
-    ) {
-      appError(
-        "INVALID_INPUT",
-        "Lead time and buffer can't be negative, and the window must be 1–365 days.",
-      );
-    }
-    await ctx.db.patch(business._id, {
-      bookingPolicy: { minNoticeMinutes, maxAdvanceDays, bufferMinutes },
-    });
-    return null;
-  },
-});
-
 /**
  * Internal: data the embed-key reveal/rotate actions need — the caller's stored
  * password hash (for verification) + the current key. Never exposed to clients.
@@ -692,13 +642,6 @@ export const purgeBusinessData = internalMutation({
     if (budget > 0)
       await drain(
         await ctx.db
-          .query("bookings")
-          .withIndex("by_business_start", (q) => q.eq("businessId", businessId))
-          .take(budget),
-      );
-    if (budget > 0)
-      await drain(
-        await ctx.db
           .query("leads")
           .withIndex("by_business", (q) => q.eq("businessId", businessId))
           .take(budget),
@@ -708,20 +651,6 @@ export const purgeBusinessData = internalMutation({
         await ctx.db
           .query("conversations")
           .withIndex("by_business", (q) => q.eq("businessId", businessId))
-          .take(budget),
-      );
-    if (budget > 0)
-      await drain(
-        await ctx.db
-          .query("calendarBusy")
-          .withIndex("by_business", (q) => q.eq("businessId", businessId))
-          .take(budget),
-      );
-    if (budget > 0)
-      await drain(
-        await ctx.db
-          .query("blackouts")
-          .withIndex("by_business_start", (q) => q.eq("businessId", businessId))
           .take(budget),
       );
     if (budget > 0)
@@ -741,13 +670,6 @@ export const purgeBusinessData = internalMutation({
     if (budget > 0)
       await drain(
         await ctx.db
-          .query("staff")
-          .withIndex("by_business", (q) => q.eq("businessId", businessId))
-          .take(budget),
-      );
-    if (budget > 0)
-      await drain(
-        await ctx.db
           .query("services")
           .withIndex("by_business", (q) => q.eq("businessId", businessId))
           .take(budget),
@@ -756,20 +678,6 @@ export const purgeBusinessData = internalMutation({
       await drain(
         await ctx.db
           .query("locations")
-          .withIndex("by_business", (q) => q.eq("businessId", businessId))
-          .take(budget),
-      );
-    if (budget > 0)
-      await drain(
-        await ctx.db
-          .query("availabilityRules")
-          .withIndex("by_business", (q) => q.eq("businessId", businessId))
-          .take(budget),
-      );
-    if (budget > 0)
-      await drain(
-        await ctx.db
-          .query("calendarConnections")
           .withIndex("by_business", (q) => q.eq("businessId", businessId))
           .take(budget),
       );

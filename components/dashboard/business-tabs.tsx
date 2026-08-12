@@ -12,7 +12,6 @@ const TABS = [
   { label: "Locations", segment: "locations" },
   { label: "Team", segment: "team" },
   { label: "Services", segment: "services" },
-  { label: "Schedule", segment: "schedule" },
   { label: "Knowledge", segment: "knowledge" },
   { label: "Playground", segment: "playground" },
 ] as const;

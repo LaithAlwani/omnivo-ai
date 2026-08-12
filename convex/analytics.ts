@@ -28,21 +28,8 @@ export const overview = query({
     const { business } = await requireMemberBySlug(ctx, slug);
     const now = Date.now();
 
-    // Upcoming confirmed bookings (soonest first), plus a 7-day slice.
-    const upcomingRows = await ctx.db
-      .query("bookings")
-      .withIndex("by_business_start", (q) =>
-        q.eq("businessId", business._id).gte("start", now),
-      )
-      .take(CAP);
-    const confirmed = upcomingRows.filter((b) => b.status === "confirmed");
-    const upcomingBookings = confirmed.length;
-    const bookingsThisWeek = confirmed.filter(
-      (b) => b.start < now + 7 * DAY,
-    ).length;
-
     // Leads bucketed by pipeline stage (bounded per stage).
-    let capped = upcomingRows.length === CAP;
+    let capped = false;
     const byStatus = { new: 0, contacted: 0, qualified: 0, won: 0, lost: 0 };
     for (const status of LEAD_STATUSES) {
       const rows = await ctx.db
@@ -82,18 +69,13 @@ export const overview = query({
       : null;
     const conversationsThisMonth = usage?.conversations ?? 0;
 
-    // Onboarding signals for the overview checklist — cheap existence checks.
+    // Onboarding signal for the overview checklist — cheap existence check.
     const knowledgeRow = await ctx.db
       .query("knowledge")
       .withIndex("by_business", (q) => q.eq("businessId", business._id))
       .unique();
-    const calendarConn = await ctx.db
-      .query("calendarConnections")
-      .withIndex("by_business", (q) => q.eq("businessId", business._id))
-      .first();
     return {
       knowledgeReady: knowledgeRow !== null,
-      calendarConnected: calendarConn !== null,
       conversations,
       conversationsThisWeek,
       conversationsThisMonth,
@@ -102,8 +84,6 @@ export const overview = query({
       smsCap: smsCap(plan),
       emailThisMonth: usage?.email ?? 0,
       emailCap: emailCap(plan),
-      upcomingBookings,
-      bookingsThisWeek,
       openLeads,
       wonLeads: byStatus.won,
       totalLeads,

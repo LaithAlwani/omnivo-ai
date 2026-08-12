@@ -1,8 +1,6 @@
 import { internal } from "../../_generated/api";
 import type { ActionCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
-import { randomHex } from "../keys";
-import { NATIVE_BOOKING_CAPS } from "./native";
 import type {
   AvailabilityQuery,
   BookingCapability,
@@ -13,19 +11,18 @@ import type {
 } from "./types";
 
 // -----------------------------------------------------------------------------
-// Provider resolution + dispatch — the ONE place an agent-invocable capability
-// reaches an external system or a domain table. Callers (assistantTools) resolve
-// a provider descriptor, then invoke these helpers; the native-vs-connected
-// decision and all IO routing live here. External IO (webhook/CRM fetch) is in
-// `"use node"` actions; native reads/writes go through existing internal Convex
-// functions. A misconfigured connected provider transparently falls back to
-// native, preserving today's behaviour (Phase B tightens this).
+// Provider resolution + dispatch — the ONE place an agent-invocable booking
+// capability reaches an external system. Booking is CONNECTOR-ONLY: the tenant
+// connects their own scheduler (the generic `webhook` provider). There is no
+// native Managed booking engine — when nothing is connected the agent has no
+// booking tools and hands off (capture_lead). External IO lives in
+// `"use node"` actions (integrationsNode); this module stays pure dispatch.
 // -----------------------------------------------------------------------------
 
-/** Pure decision: which booking provider (if any) is CONNECTED for a tenant —
- *  a webhook with usable endpoints (read = availabilityUrl, write = bookingUrl)
- *  wins; else the native Managed engine when the tenant has a natively bookable
- *  staff member; else null (no booking connection → booking tools drop out). */
+/** Pure decision: the connected booking provider for a tenant, or null. A
+ *  webhook with usable endpoints wins (read = availabilityUrl, write =
+ *  bookingUrl); a degraded connection or one with no usable endpoints → null,
+ *  so the agent's booking tools drop out and it hands off. */
 export function decideBookingProvider(input: {
   integration: {
     provider: string;
@@ -33,12 +30,10 @@ export function decideBookingProvider(input: {
     config: unknown;
     health?: "healthy" | "degraded" | null;
   } | null;
-  nativeBookableStaff: number;
 }): BookingProviderDescriptor | null {
-  const { integration, nativeBookableStaff } = input;
+  const { integration } = input;
   if (integration?.active && integration.provider === "webhook") {
-    // A degraded connection drops booking entirely — never fall back to native,
-    // which isn't the tenant's system of record. The agent hands off instead.
+    // A degraded connection drops booking entirely — the agent hands off.
     if (integration.health === "degraded") return null;
     const cfg = (integration.config ?? {}) as {
       availabilityUrl?: string;
@@ -49,9 +44,6 @@ export function decideBookingProvider(input: {
     if (cfg.bookingUrl) caps.add("write");
     if (caps.size > 0) return { id: "webhook", caps };
     // Connected but no usable endpoints → treat as not connected.
-  }
-  if (nativeBookableStaff > 0) {
-    return { id: "native", caps: new Set(NATIVE_BOOKING_CAPS) };
   }
   return null;
 }
@@ -65,11 +57,6 @@ export async function resolveBookingProvider(
     businessId,
     kind: "booking",
   });
-  const staff = await ctx.runQuery(internal.staff.listBookableForBusiness, {
-    businessId,
-  });
-  // Link-only staff (their own booking URL) can't take a native slot booking.
-  const nativeBookableStaff = staff.filter((s) => !s.externalBookingUrl).length;
   return decideBookingProvider({
     integration: conn
       ? {
@@ -79,12 +66,10 @@ export async function resolveBookingProvider(
           health: conn.health,
         }
       : null,
-    nativeBookableStaff,
   });
 }
 
-/** Read open times through the resolved provider (falls back to native when a
- *  connected provider is present but can't answer). */
+/** Read open times through the connected provider (empty when it can't answer). */
 export async function getAvailability(
   ctx: ActionCtx,
   businessId: Id<"businesses">,
@@ -100,27 +85,18 @@ export async function getAvailability(
       locationName: q.locationName,
     });
     if (via.handled) return via.slots.map((start) => ({ start }));
-    // Provider active but unconfigured for availability → native.
   }
-  return await ctx.runQuery(internal.slots.getSlotsForBusiness, {
-    businessId,
-    staffId: q.staffId ?? "any",
-    fromMs: q.fromMs,
-    days: q.days,
-    serviceId: q.serviceId,
-    locationId: q.locationId,
-  });
+  return [];
 }
 
-/** Place a booking through the resolved provider (falls back to native when a
- *  connected provider can't take the write). */
+/** Place a booking through the connected provider (fails when it can't write). */
 export async function createBooking(
   ctx: ActionCtx,
   businessId: Id<"businesses">,
   provider: BookingProviderDescriptor,
   input: BookingInput,
 ): Promise<BookingResult> {
-  // A read-only provider never falls back to booking natively behind the user.
+  // A read-only provider can't place the booking — the agent hands off.
   if (!provider.caps.has("write")) {
     return { ok: false, reason: "read-only" };
   }
@@ -143,21 +119,8 @@ export async function createBooking(
         ? { ok: true, start: input.startMs }
         : { ok: false, reason: "scheduling-system" };
     }
-    // Provider active but unconfigured for booking → native.
   }
-  const res = await ctx.runMutation(internal.bookings.createForBusiness, {
-    businessId,
-    staffId: input.staffId ?? "any",
-    start: input.startMs,
-    serviceId: input.serviceId,
-    locationId: input.locationId,
-    source: "assistant",
-    cancelToken: randomHex(16),
-    customerName: input.customerName,
-    customerEmail: input.customerEmail,
-    customerPhone: input.customerPhone,
-  });
-  return { ok: true, start: res.start, staffId: res.staffId };
+  return { ok: false, reason: "scheduling-system" };
 }
 
 /** Capture a lead — always the native CRM write today (external CRM push is a

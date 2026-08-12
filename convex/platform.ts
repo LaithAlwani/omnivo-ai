@@ -179,33 +179,6 @@ export const businessDetail = query({
     const business = await ctx.db.get(businessId);
     if (!business) appError("NOT_FOUND", "That business doesn't exist.");
 
-    const staff = await ctx.db
-      .query("staff")
-      .withIndex("by_business", (q) => q.eq("businessId", businessId))
-      .take(100);
-    const staffName = new Map<Id<"staff">, string>(
-      staff.map((s) => [s._id, s.name]),
-    );
-
-    const now = Date.now();
-    const bookingRows = await ctx.db
-      .query("bookings")
-      .withIndex("by_business_start", (q) =>
-        q.eq("businessId", businessId).gte("start", now),
-      )
-      .take(25);
-    const upcoming = bookingRows
-      .filter((b) => b.status === "confirmed")
-      .map((b) => ({
-        _id: b._id,
-        start: b.start,
-        end: b.end,
-        customerName: b.customerName,
-        customerEmail: b.customerEmail,
-        staffName: staffName.get(b.staffId) ?? "—",
-        source: b.source,
-      }));
-
     const leadRows = await ctx.db
       .query("leads")
       .withIndex("by_business", (q) => q.eq("businessId", businessId))
@@ -261,14 +234,6 @@ export const businessDetail = query({
         domains: business.domains,
         createdAt: business._creationTime,
       },
-      staff: staff.map((s) => ({
-        _id: s._id,
-        name: s.name,
-        title: s.title ?? null,
-        active: s.active,
-        bookable: s.bookable,
-      })),
-      upcoming,
       leads,
       members,
       connections,

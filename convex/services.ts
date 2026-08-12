@@ -1,15 +1,13 @@
 import { v } from "convex/values";
 import { internalQuery, mutation, query } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
 import { requireMemberBySlug } from "./lib/authz";
 import { appError } from "./lib/errors";
 
 // -----------------------------------------------------------------------------
-// Services — the bookable offerings (a haircut, a color, a consult). Each has a
-// duration that drives slot length and an optional price. `staffIds` limits who
-// performs it (empty = anyone bookable). The assistant offers these by name and
-// books the matching duration.
+// Services — the offerings a business lists (a haircut, a color, a consult),
+// each with an optional duration + price. The assistant surfaces these by name
+// and price via `list_services`; they're business knowledge, not a booking
+// primitive (booking happens in the connected scheduler).
 // -----------------------------------------------------------------------------
 
 function validateDuration(mins: number) {
@@ -22,22 +20,6 @@ function validatePrice(cents: number | undefined) {
   if (cents !== undefined && (!Number.isInteger(cents) || cents < 0)) {
     appError("INVALID_INPUT", "Price must be a whole number of cents, or blank.");
   }
-}
-
-/** Keep only staff ids that belong to this business (drops stale/foreign ids). */
-async function cleanStaffIds(
-  ctx: MutationCtx,
-  businessId: Id<"businesses">,
-  staffIds: Id<"staff">[] | undefined,
-): Promise<Id<"staff">[] | undefined> {
-  if (!staffIds || staffIds.length === 0) return undefined;
-  const rows = await ctx.db
-    .query("staff")
-    .withIndex("by_business", (q) => q.eq("businessId", businessId))
-    .collect();
-  const valid = new Set(rows.map((s) => s._id as string));
-  const kept = staffIds.filter((id) => valid.has(id));
-  return kept.length ? kept : undefined;
 }
 
 export const list = query({
@@ -80,7 +62,6 @@ export const add = mutation({
     durationMinutes: v.number(),
     priceCents: v.optional(v.number()),
     description: v.optional(v.string()),
-    staffIds: v.optional(v.array(v.id("staff"))),
   },
   returns: v.id("services"),
   handler: async (ctx, args) => {
@@ -102,7 +83,6 @@ export const add = mutation({
       durationMinutes: args.durationMinutes,
       priceCents: args.priceCents,
       description: args.description?.trim() || undefined,
-      staffIds: await cleanStaffIds(ctx, business._id, args.staffIds),
       active: true,
       order,
     });
@@ -118,7 +98,6 @@ export const update = mutation({
     priceCents: v.optional(v.union(v.number(), v.null())),
     description: v.optional(v.string()),
     active: v.optional(v.boolean()),
-    staffIds: v.optional(v.array(v.id("staff"))),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -134,7 +113,6 @@ export const update = mutation({
       priceCents?: number | undefined;
       description?: string | undefined;
       active?: boolean;
-      staffIds?: Id<"staff">[] | undefined;
     } = {};
     if (args.name !== undefined) {
       const name = args.name.trim();
@@ -154,9 +132,6 @@ export const update = mutation({
       patch.description = args.description.trim() || undefined;
     }
     if (args.active !== undefined) patch.active = args.active;
-    if (args.staffIds !== undefined) {
-      patch.staffIds = await cleanStaffIds(ctx, business._id, args.staffIds);
-    }
 
     await ctx.db.patch(args.serviceId, patch);
     return null;

@@ -19,15 +19,6 @@ function fmtDate(ms: number) {
     year: "numeric",
   });
 }
-function fmtDateTime(ms: number) {
-  return new Date(ms).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function Section({
   title,
   count,
@@ -230,7 +221,7 @@ export default function PlatformBusinessDetail() {
     return <div className="text-sm text-faint">Loading…</div>;
   }
 
-  const { business, staff, upcoming, leads, members, connections } = data;
+  const { business, leads, members, connections } = data;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -281,36 +272,6 @@ export default function PlatformBusinessDetail() {
         monthlyOverrideCents={business.monthlyOverrideCents}
       />
 
-      <Section title="Upcoming bookings" count={upcoming.length}>
-        {upcoming.length === 0 ? (
-          <Empty label="No upcoming bookings." />
-        ) : (
-          <table className="w-full min-w-[34rem] text-sm">
-            <thead>
-              <tr className="border-b border-line">
-                <th className={th}>When</th>
-                <th className={th}>Customer</th>
-                <th className={th}>With</th>
-                <th className={th}>Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {upcoming.map((b) => (
-                <tr key={b._id} className="border-b border-line/60 last:border-0">
-                  <td className={td}>{fmtDateTime(b.start)}</td>
-                  <td className="px-3 py-2 text-bone">
-                    {b.customerName}
-                    <div className="text-xs text-faint">{b.customerEmail}</div>
-                  </td>
-                  <td className={td}>{b.staffName}</td>
-                  <td className={td}>{b.source}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
       <Section title="Recent leads" count={leads.length}>
         {leads.length === 0 ? (
           <Empty label="No leads yet." />
@@ -339,31 +300,6 @@ export default function PlatformBusinessDetail() {
       </Section>
 
       <div className="grid gap-8 sm:grid-cols-2">
-        <Section title="Staff" count={staff.length}>
-          {staff.length === 0 ? (
-            <Empty label="No staff." />
-          ) : (
-            <ul className="divide-y divide-line/60">
-              {staff.map((s) => (
-                <li
-                  key={s._id}
-                  className="flex items-center justify-between px-3 py-2 text-sm"
-                >
-                  <span className="text-bone">
-                    {s.name}
-                    {s.title ? (
-                      <span className="text-faint"> · {s.title}</span>
-                    ) : null}
-                  </span>
-                  <span className="font-mono text-[0.6rem] uppercase tracking-wider text-faint">
-                    {s.active ? (s.bookable ? "bookable" : "active") : "inactive"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
         <Section title="Team" count={members.length}>
           {members.length === 0 ? (
             <Empty label="No members." />
