@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { LiveAssistant } from "@/components/sections/live-assistant";
-import { company, heroStats } from "@/lib/site-config";
+import { company, heroStats, appHref } from "@/lib/site-config";
 
 const rise = {
   hidden: { opacity: 0, y: 20 },
@@ -46,8 +47,8 @@ export function Hero() {
               animate="show"
               className="mt-6 text-[2.7rem] leading-[1.02] tracking-tight sm:text-6xl"
             >
-              An assistant that answers, <span className="text-molten">books</span>,
-              and captures <span className="text-molten">leads</span>.
+              The AI <span className="text-molten">layer</span> for the tools you
+              already <span className="text-molten">run</span>.
             </motion.h1>
 
             <motion.p
@@ -70,9 +71,15 @@ export function Hero() {
               <Button href={company.primaryCta.href} size="lg">
                 {company.primaryCta.label}
               </Button>
-              <Button href={company.secondaryCta.href} variant="ghost" size="lg">
-                {company.secondaryCta.label}
+              <Button href={appHref("/create")} variant="ghost" size="lg">
+                Set it up yourself
               </Button>
+              <Link
+                href={company.secondaryCta.href}
+                className="ml-1 whitespace-nowrap font-mono text-xs uppercase tracking-wider text-faint transition-colors hover:text-ember"
+              >
+                {company.secondaryCta.label} →
+              </Link>
             </motion.div>
 
             {/* Proof strip */}

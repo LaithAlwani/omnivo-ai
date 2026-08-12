@@ -13,14 +13,14 @@ export function PlatformTools() {
     <section id="tools" className="section relative scroll-mt-20">
       <div className="shell">
         <SectionHeading
-          eyebrow="The platform"
+          eyebrow="Connections"
           title={
             <>
-              One engine. <span className="text-molten">Every tool</span> your site
-              needs.
+              One assistant, <span className="text-molten">driving the tools</span>{" "}
+              you already run.
             </>
           }
-          lead="Chat, booking, leads, messaging, analytics — built once and shared, so the assistant does real work instead of just talking."
+          lead="Booking, CRM, calendar — Omnivo connects what you already use and acts through it, so the assistant does real work instead of just talking."
         />
 
         <div className="mt-14 grid gap-4 lg:grid-cols-3">

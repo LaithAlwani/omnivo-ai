@@ -20,7 +20,7 @@ export function Faq() {
                   Straight <span className="text-molten">answers</span>.
                 </>
               }
-              lead="Fitting for a product built on giving them. Still curious? Book a demo and ask us anything."
+              lead="Fitting for a product built on giving them. Still curious? Book an install call and ask us anything."
             />
           </div>
 

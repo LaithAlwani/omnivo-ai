@@ -4,9 +4,9 @@ import { company, appHref } from "@/lib/site-config";
 
 const columns = [
   {
-    title: "Platform",
+    title: "Connections",
     links: [
-      { label: "AI Chat", href: "/#tools" },
+      { label: "AI Assistant", href: "/#tools" },
       { label: "Booking", href: "/#tools" },
       { label: "Lead capture", href: "/#tools" },
       { label: "How it works", href: "/#how" },
@@ -24,7 +24,7 @@ const columns = [
   {
     title: "Company",
     links: [
-      { label: "Book a demo", href: "/book" },
+      { label: "Book an install call", href: "/book" },
       { label: "FAQ", href: "/#faq" },
       { label: "Contact", href: "/#contact" },
       { label: "Sign in", href: appHref("/dashboard") },
@@ -40,8 +40,8 @@ export function SiteFooter() {
           <div className="max-w-xs">
             <Logo />
             <p className="mt-5 text-sm leading-relaxed text-muted">
-              An AI assistant that chats, books, and captures leads — live on your
-              site from a single snippet.
+              The AI layer that answers, books, and captures leads — driving the
+              booking, CRM, and calendar tools you already run.
             </p>
           </div>
           {columns.map((col) => (

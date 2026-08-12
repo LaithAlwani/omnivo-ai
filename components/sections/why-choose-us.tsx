@@ -16,7 +16,7 @@ export function WhyChooseUs() {
                   Built to <span className="text-molten">earn its keep</span>.
                 </>
               }
-              lead="An assistant is only worth having if it does the things a great front-desk hire would. This one does — and it never clocks out."
+              lead="An assistant is only worth having if it does the things a great front-desk hire would — inside the tools you already run. This one does, and it never clocks out."
             />
           </div>
 

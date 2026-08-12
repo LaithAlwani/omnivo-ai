@@ -4,7 +4,7 @@ import { ImageResponse } from "next/og";
 // for both Open Graph and Twitter (Next falls back to this when no twitter-image
 // is present). Drawn with primitives so it stays self-contained — no asset fetch.
 export const alt =
-  "Omnivo AI — an AI assistant that chats, books, and captures leads";
+  "Omnivo AI — the AI layer that drives the tools you already run";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -70,7 +70,7 @@ export default function OpengraphImage() {
               maxWidth: "900px",
             }}
           >
-            An assistant that answers, books, and captures leads.
+            The AI layer for the tools you already run.
           </div>
           <div
             style={{
@@ -80,8 +80,8 @@ export default function OpengraphImage() {
               lineHeight: 1.35,
             }}
           >
-            Paste one snippet — a warm, on-brand AI goes live on your site in
-            minutes.
+            A warm, on-brand AI that answers, books, and captures leads — driving
+            your existing booking, CRM, and calendar.
           </div>
         </div>
       </div>

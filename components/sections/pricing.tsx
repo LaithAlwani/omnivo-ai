@@ -34,11 +34,11 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
             eyebrow="Pricing"
             title={
               <>
-                One employee. <span className="text-molten">Pick the skills</span> you
-                need.
+                Set it up yourself, or{" "}
+                <span className="text-molten">we install it</span>.
               </>
             }
-            lead="Every plan is one AI employee with a bundle of skills. No à-la-carte — just pick the tier that fits."
+            lead="Self-setup runs on a published monthly plan — pick a tier below. Prefer we do it? Installed deployments are quoted per project (setup + monthly)."
             className="mx-auto"
           />
         )}
@@ -153,8 +153,16 @@ export function Pricing({ withHeading = true }: { withHeading?: boolean }) {
           </table>
         </div>
 
-        {/* Add-ons + Enterprise */}
+        {/* Two-path footer: self-setup add-ons + the installed / Enterprise path */}
         <div className="mx-auto mt-10 max-w-2xl space-y-4 text-center text-sm text-muted">
+          <p>
+            Prices above are for setting it up yourself. Want us to audit, connect,
+            and go live for you?{" "}
+            <Link href="/book" className="text-ember underline hover:text-flare">
+              Book an install call
+            </Link>{" "}
+            for a per-project quote.
+          </p>
           <p>
             Need more locations? Add extra ones for{" "}
             <span className="text-bone">${additionalLocationPrice}/mo</span> each.

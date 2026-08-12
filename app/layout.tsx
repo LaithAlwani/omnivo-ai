@@ -24,18 +24,19 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   metadataBase: new URL("https://omnivoai.ca"),
   title: {
-    default: "Omnivo AI — an AI assistant that chats, books, and captures leads",
+    default: "Omnivo AI — the AI layer that drives the tools you already run",
     template: "%s · Omnivo AI",
   },
   description:
-    "Deploy an AI assistant that chats with visitors, books appointments, and captures leads on your site. Paste one snippet — it goes live in minutes.",
+    "An AI assistant that answers, books, and captures leads by driving your existing booking, CRM, and calendar. We install and connect it for you.",
   applicationName: "Omnivo AI",
   keywords: [
     "AI assistant",
+    "AI integration layer",
     "AI chatbot for business",
     "lead capture",
     "appointment booking AI",
-    "embeddable AI widget",
+    "CRM AI assistant",
     "AI receptionist",
   ],
   authors: [{ name: "Omnivo AI" }],
@@ -45,9 +46,9 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "Omnivo AI — an AI assistant that chats, books, and captures leads",
+    title: "Omnivo AI — the AI layer that drives the tools you already run",
     description:
-      "Paste one snippet. An AI assistant that answers, books, and captures leads goes live on your site.",
+      "An AI assistant that answers, books, and captures leads by driving your existing booking, CRM, and calendar. We install and connect it for you.",
     url: "/",
     type: "website",
     siteName: "Omnivo AI",
@@ -55,9 +56,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Omnivo AI — an AI assistant that chats, books, and captures leads",
+    title: "Omnivo AI — the AI layer that drives the tools you already run",
     description:
-      "Paste one snippet. An AI assistant that answers, books, and captures leads goes live on your site.",
+      "An AI assistant that answers, books, and captures leads by driving your existing booking, CRM, and calendar. We install and connect it for you.",
   },
   robots: {
     index: true,

@@ -29,11 +29,11 @@ import { MODULE_CATALOG } from "@/convex/modules/registry";
 
 export const company = {
   name: "Omnivo AI",
-  eyebrow: "The AI engine for small business",
-  heroHeadline: "An assistant that answers, books, and captures leads.",
+  eyebrow: "AI that drives the tools you already run",
+  heroHeadline: "The AI layer for the tools you already run.",
   heroLead:
-    "Paste one snippet on your site and a warm, on-brand AI goes live — handling questions, filling your calendar, and never letting a lead go cold.",
-  primaryCta: { label: "Book a demo", href: "/book" },
+    "Omnivo connects the booking, CRM, and calendar tools you already run, then puts a warm, on-brand AI in front of them — answering, booking, and capturing leads. We install and connect it for you.",
+  primaryCta: { label: "Book an install call", href: "/book" },
   secondaryCta: { label: "See how it works", href: "/#how" },
 } as const;
 
@@ -45,7 +45,7 @@ export const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 export const appHref = (path: string) => `${appBaseUrl}${path}`;
 
 export const nav: NavItem[] = [
-  { label: "Platform", href: "/#tools" },
+  { label: "Connections", href: "/#tools" },
   { label: "How it works", href: "/#how" },
   { label: "Pricing", href: "/#pricing" },
   { label: "FAQ", href: "/#faq" },
@@ -53,27 +53,27 @@ export const nav: NavItem[] = [
 
 // The one-line proof strip under the hero.
 export const heroStats: Metric[] = [
-  { value: "60s", label: "to go live" },
   { value: "24/7", label: "always answering" },
-  { value: "1 snippet", label: "to install" },
+  { value: "0", label: "tools to replace" },
+  { value: "1 layer", label: "over your stack" },
 ];
 
 export const tools: Tool[] = [
   {
     id: "chat",
-    name: "AI Chat",
+    name: "AI Assistant",
     tagline: "Trained on your business",
     description:
-      "Answers questions in your voice from your hours, services, and policies — not a generic bot.",
+      "Answers in your voice from your hours, services, and policies — then acts through the tools you already run, not a generic bot.",
     icon: "chat",
     featured: true,
   },
   {
     id: "booking",
     name: "Booking",
-    tagline: "Fills the calendar",
+    tagline: "Into your scheduler",
     description:
-      "Checks real availability and books the appointment inside the chat. Syncs to Google Calendar.",
+      "Checks real availability and books inside the chat — into your own scheduling system, or Omnivo's Managed calendar as a fallback.",
     icon: "calendar",
   },
   {
@@ -81,7 +81,7 @@ export const tools: Tool[] = [
     name: "Lead Capture",
     tagline: "Nothing slips",
     description:
-      "Every enquiry becomes a tracked lead with contact details, source, and follow-up.",
+      "Every enquiry becomes a tracked lead with contact details, source, and follow-up — pushed to the CRM you already use.",
     icon: "leads",
   },
   {
@@ -101,12 +101,12 @@ export const tools: Tool[] = [
     icon: "chart",
   },
   {
-    id: "modules",
-    name: "Modular skills",
-    tagline: "One employee, more skills",
+    id: "connections",
+    name: "Connections",
+    tagline: "Works with your stack",
     description:
-      "Switch on Booking, SMS, Reviews, Sales, or Integrations — your assistant gains the skill instantly.",
-    icon: "employees",
+      "Connect your booking system, CRM, and calendar. No system of record yet? Omnivo's Managed engine is the built-in fallback.",
+    icon: "plug",
   },
   {
     id: "whitelabel",
@@ -121,18 +121,18 @@ export const tools: Tool[] = [
 export const steps: ProcessStep[] = [
   {
     n: "01",
-    title: "Connect your knowledge",
-    body: "Add your services, hours, pricing, and FAQs. The assistant learns your business in minutes — no training data, no prompt engineering.",
+    title: "Connect your systems",
+    body: "We audit what you already run — booking, CRM, calendar — and connect it, then load your knowledge. No system of record? The Managed engine is the fallback.",
   },
   {
     n: "02",
-    title: "Paste one snippet",
-    body: "Drop a single <script> tag on your site. The assistant appears as a floating bubble, themed to match your brand.",
+    title: "Verify",
+    body: "We test every connection end-to-end so the assistant answers and books correctly — before a single visitor sees it.",
   },
   {
     n: "03",
     title: "Go live",
-    body: "It starts answering, booking, and capturing leads the moment it loads — and hands off to you when a human is needed.",
+    body: "You approve, we flip it on. The assistant runs on your domain, under your brand, driving your tools 24/7 — and hands off to a human when it should.",
   },
 ];
 
@@ -149,7 +149,7 @@ export const valueProps: ValueProp[] = [
   },
   {
     title: "Works with your stack",
-    body: "Google Calendar, your email, your number. It plugs into the tools you already run the business on.",
+    body: "Your booking system, your CRM, your calendar. Omnivo drives the tools you already run — nothing to rip out or migrate to.",
     icon: "plug",
   },
   {
@@ -159,17 +159,12 @@ export const valueProps: ValueProp[] = [
   },
 ];
 
-// The embed snippet shown in the "how it works" section.
-export const embedSnippet = `<script
-  src="https://omnivoai.ca/widget.js"
-  data-embed-key="pk_live_7f3a...">
-</script>`;
-
 // -----------------------------------------------------------------------------
 // Pricing — derived from the app's single source of truth (convex/lib/tiers +
 // the module registry) so marketing can't drift from what the product enforces.
-// Model: one AI employee on a bundled tier; modules are included per tier (no
-// à-la-carte). Founding Partner = first 10 accounts at 50% off, locked in.
+// Model: two paths. Self-setup runs on a published monthly tier (shown here);
+// an installed deployment adds a per-project quote (setup + monthly) — "book a
+// call", not listed. Connector modules are bundled into every tier.
 // -----------------------------------------------------------------------------
 
 // AI-credit copy, derived from the single source. Credits are a whole-number
@@ -188,9 +183,9 @@ export const plans: Plan[] = [
     kind: "platform",
     price: `$${planPrice("starter")}`,
     cadence: "/mo",
-    blurb: "One AI employee that books, texts, and captures leads for a single location.",
+    blurb: "One AI assistant that books, captures leads, and drives your tools for a single location.",
     features: [
-      "Booking + Lead Capture + SMS",
+      "Booking + Lead Capture + Connections",
       "1 location",
       creditBullet("starter"),
       `${smsCap("starter")!.toLocaleString()} SMS / mo`,
@@ -203,10 +198,9 @@ export const plans: Plan[] = [
     kind: "platform",
     price: `$${planPrice("professional")}`,
     cadence: "/mo",
-    blurb: "Adds SMS + reviews and a second location.",
+    blurb: "More locations and higher monthly limits.",
     features: [
       "Everything in Starter",
-      "+ Review Management + SMS Automation",
       "2 locations",
       creditBullet("professional"),
       `${smsCap("professional")!.toLocaleString()} SMS / mo`,
@@ -219,10 +213,9 @@ export const plans: Plan[] = [
     kind: "platform",
     price: `$${planPrice("premium")}`,
     cadence: "/mo",
-    blurb: "The full toolkit — sales, integrations, white-label, 5 locations.",
+    blurb: "The full toolkit — white-label, custom domain, 5 locations.",
     features: [
       "Everything in Professional",
-      "+ Sales Assistant + Integrations",
       "White-label + custom email domain",
       "5 locations",
       creditBullet("premium"),
@@ -291,7 +284,7 @@ export const overageRates = [
 
 export const seo = {
   title:
-    "Omnivo AI — an AI assistant that chats, books, and captures leads",
+    "Omnivo AI — the AI layer that drives the tools you already run",
   description:
-    "Deploy an AI assistant that answers questions, books appointments, and captures leads on your site. Paste one snippet — it goes live in minutes.",
+    "An AI assistant that answers, books, and captures leads by driving your existing booking, CRM, and calendar. We install and connect it for you.",
 };

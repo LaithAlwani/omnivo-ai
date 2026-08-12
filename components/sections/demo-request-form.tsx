@@ -5,7 +5,7 @@ import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { PublicConvexProvider } from "@/components/providers/public-convex-provider";
 
-// The marketing "Book a demo" form. Name + email are required; subject, phone,
+// The marketing "Book an install call" form. Name + email are required; subject, phone,
 // and the message are optional. Everything is validated here for instant
 // feedback and again on the server (which is the real gate). On submit it calls
 // the tenant-less `demoRequests.submit` action, which emails the team and sends
@@ -77,7 +77,7 @@ function Panel({ children }: { children: React.ReactNode }) {
               <span className="relative inline-flex h-2 w-2 rounded-full bg-ember" />
             </span>
             <span className="font-mono text-xs tracking-wide text-bone-dim">
-              request · demo
+              request · install call
             </span>
           </div>
           <span className="font-mono text-[0.7rem] text-faint">~15 min</span>
@@ -236,7 +236,7 @@ function DemoForm() {
             </>
           ) : (
             <>
-              Request a demo
+              Book an install call
               <svg viewBox="0 0 16 16" className="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M3 8h10M9 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>

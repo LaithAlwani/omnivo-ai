@@ -3,9 +3,9 @@ import { Reveal } from "@/components/ui/reveal";
 import { DemoRequestForm } from "@/components/sections/demo-request-form";
 
 export const metadata: Metadata = {
-  title: "Book a demo",
+  title: "Book an install call",
   description:
-    "See Omnivo AI answer, book, and capture a lead with your own business. A fifteen-minute walkthrough.",
+    "We audit the tools you already run, connect them to Omnivo, and go live for you. Book a short call to scope your install.",
 };
 
 // The demo form talks to Convex through the no-auth public client, which is
@@ -17,16 +17,16 @@ export const dynamic = "force-dynamic";
 // What the requester actually gets — reassurance next to the form.
 const perks = [
   {
-    title: "A live 15-minute walkthrough",
-    body: "We connect a sample of your knowledge and drive the assistant on a call — nothing to install first.",
+    title: "A short scoping call",
+    body: "We map the tools you already run — booking, CRM, calendar — and how the assistant will drive them. No rip-and-replace.",
   },
   {
-    title: "See it answer, book & capture a lead",
-    body: "Real questions, real openings, a real booking and lead — running on your own business, not a canned demo.",
+    title: "We install, connect & verify",
+    body: "We wire up your systems, load your knowledge, and test every path end-to-end — so it works before a single visitor sees it.",
   },
   {
-    title: "A reply within one business day",
-    body: "Tell us where to reach you and we'll line up a time that works. No credit card, no commitment.",
+    title: "You approve, we go live",
+    body: "Tell us where to reach you and we'll line up a time. You sign off; the assistant goes live on your domain, under your brand.",
   },
 ];
 
@@ -57,21 +57,21 @@ export default function BookPage() {
             <Reveal>
               <span className="eyebrow inline-flex items-center gap-2.5 rounded-full border border-line px-3.5 py-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-ember" />
-                Book a demo
+                Book an install call
               </span>
             </Reveal>
 
             <Reveal delay={0.06}>
               <h1 className="mt-6 text-[2.6rem] leading-[1.03] tracking-tight sm:text-5xl">
-                Let&rsquo;s watch it work on{" "}
-                <span className="text-molten">your</span> business.
+                Let&rsquo;s wire it into{" "}
+                <span className="text-molten">your</span> stack.
               </h1>
             </Reveal>
 
             <Reveal delay={0.12}>
               <p className="mt-6 max-w-md text-lg leading-relaxed text-muted">
-                Fifteen minutes is all it takes to see the assistant answer, book,
-                and capture a lead — live, on your own front desk.
+                A short call to scope your install — we connect the tools you already
+                run, verify every path, and go live for you.
               </p>
             </Reveal>
 

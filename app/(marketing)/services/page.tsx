@@ -6,7 +6,7 @@ import { ContactSection } from "@/components/sections/contact-section";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Omnivo AI pricing — one AI employee from $299/mo across three bundled tiers (Starter, Professional, Premium). Founding Partner pricing for the first 10. Free trial on every plan.",
+    "Omnivo AI pricing — set it up yourself from $299/mo across three tiers (Starter, Professional, Premium), or have us install and connect it for you on a per-project quote.",
 };
 
 export default function ServicesPage() {
@@ -23,8 +23,9 @@ export default function ServicesPage() {
             headcount.
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">
-            One assistant replaces a stack of missed calls and unanswered forms. Start
-            on Starter, move up when it&rsquo;s paying for itself many times over.
+            One assistant replaces a stack of missed calls and unanswered forms. Set
+            it up yourself on a monthly plan, or have us install and connect it for
+            you — move up a tier when it&rsquo;s paying for itself many times over.
           </p>
         </div>
       </section>

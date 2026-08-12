@@ -6,20 +6,20 @@ export const faqs: Faq[] = [
     a: "You fill in a short knowledge base — services, hours, pricing, policies, common questions. The assistant answers only from that, so it quotes your real prices and never makes things up. You can edit it any time and the answers update instantly.",
   },
   {
-    q: "What do I actually have to install?",
-    a: "One line of HTML — a single <script> tag you paste before the closing body tag. It works on any site: WordPress, Squarespace, Shopify, Webflow, or hand-coded. No plugins, no developers.",
+    q: "Do I have to replace the tools I already use?",
+    a: "No. Omnivo is a layer on top of your existing stack — it connects your booking system, CRM, and calendar and acts through them. Nothing to rip out or migrate. If you don't have a system of record yet, our Managed engine is the built-in fallback. Most businesses have us do the install: we audit what you run, connect it, verify every path, and go live for you.",
   },
   {
     q: "Can it really book appointments?",
-    a: "Yes. Connect your Google Calendar and the assistant checks live availability, offers real open slots, and books the appointment inside the conversation. The customer gets a confirmation; you get the event on your calendar.",
+    a: "Yes. It books into your own scheduling system when one is connected — checking live availability, offering real open slots, and confirming inside the conversation — or into Omnivo's Managed calendar as a fallback. The customer gets a confirmation; the booking lands wherever you run your schedule.",
   },
   {
     q: "What happens to the leads it captures?",
-    a: "Every enquiry becomes a tracked lead with the contact's details, what they asked, and where they came from. You see them in your dashboard and can follow up by email or SMS — automatically or by hand.",
+    a: "Every enquiry becomes a tracked lead with the contact's details, what they asked, and where they came from. You see them in your dashboard, follow up by email or SMS, and — when your CRM is connected — the lead is pushed straight into it.",
   },
   {
     q: "Will it look like my brand or like Omnivo AI?",
-    a: "Yours. On Professional and up you set the logo, colors, and assistant name, and remove our branding entirely. Customers see your assistant on your site — they never know we exist.",
+    a: "Yours. On Premium you set the logo, colors, and assistant name, and remove our branding entirely. Customers see your assistant on your site — they never know we exist.",
   },
   {
     q: "Is my customers' data safe?",
@@ -31,6 +31,6 @@ export const faqs: Faq[] = [
   },
   {
     q: "How much does it cost?",
-    a: "You hire one AI employee on a bundled tier. Starter is $299/mo (Booking + Lead Capture + SMS, 1 location, $15 AI credits, 2,500 emails, 100 SMS). Professional is $449/mo (adds Review Management + higher limits, 2 locations, $30 AI credits, 500 SMS). Premium is $499/mo (adds Sales Assistant + Integrations + white-label + custom domain, 5 locations, $50 AI credits, 15,000 emails, 1,500 SMS). AI credits are a monthly balance spent by the tokens your assistant uses to chat — heavier months cost more, and you can top up with a $10 = 1M-token pack or let usage run at $3 per 100K tokens over. Extra locations are $19.99/mo each, and Enterprise is custom. The first 10 customers get Founding Partner Pricing — 50% off, locked in. Every plan starts with a free trial.",
+    a: "Two paths. Set it up yourself on a published monthly plan: Starter $299/mo (Booking + Lead Capture + Connections, 1 location, $15 AI credits, 2,500 emails, 100 SMS), Professional $449/mo (2 locations, $30 AI credits, 500 SMS), Premium $499/mo (white-label + custom domain, 5 locations, $50 AI credits, 15,000 emails, 1,500 SMS). Extra locations are $19.99/mo each. AI credits are a monthly balance spent by the tokens your assistant uses to chat — heavier months cost more. Prefer we install it? We audit your systems, connect them, and go live for you; installed deployments are quoted per project (a setup fee plus monthly). Book an install call for a quote. Enterprise is custom.",
   },
 ];

@@ -21,19 +21,19 @@ export function ContactSection() {
                 Put your front desk <span className="text-molten">on autopilot</span>.
               </h2>
               <p className="mx-auto mt-5 max-w-lg text-lg text-muted">
-                See it answer, book, and capture a lead with your own business in the
-                driver&rsquo;s seat. It takes fifteen minutes.
+                We audit the tools you already run, connect them, and go live for
+                you — an AI that answers, books, and captures leads on your stack.
               </p>
               <div className="mt-9 flex flex-wrap justify-center gap-3">
                 <Button href={company.primaryCta.href} size="lg">
                   {company.primaryCta.label}
                 </Button>
-                <Button href={appHref("/dashboard")} variant="ghost" size="lg">
-                  Start free trial
+                <Button href={appHref("/create")} variant="ghost" size="lg">
+                  Set it up yourself
                 </Button>
               </div>
               <p className="mt-6 font-mono text-xs text-faint">
-                No credit card · Live in minutes · Cancel anytime
+                Book a call · We install &amp; connect · You approve go-live
               </p>
             </div>
           </div>
