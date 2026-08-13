@@ -319,6 +319,7 @@ export default defineSchema({
       v.literal("webhook"),
       v.literal("link"), // paste a booking-page URL; the assistant hands it off
       v.literal("calcom"),
+      v.literal("ladigital"), // an LA Digital client site's /api/agent surface
       v.literal("calendly"),
       v.literal("acuity"),
       v.literal("square"),

@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { ladigitalAvailabilityUrl } from "./lib/providers/ladigital";
 
 // -----------------------------------------------------------------------------
 // Connection health — the failure-first spine. A cron pings each active booking
@@ -77,11 +78,17 @@ export const probeTarget = internalQuery({
       url?: string;
       availabilityUrl?: string;
       bookingUrl?: string;
+      baseUrl?: string;
     };
     return {
       businessId: row.businessId,
       kind: row.kind,
-      url: cfg.availabilityUrl ?? cfg.url ?? cfg.bookingUrl ?? null,
+      url:
+        cfg.availabilityUrl ??
+        cfg.url ??
+        cfg.bookingUrl ??
+        ladigitalAvailabilityUrl(cfg) ??
+        null,
       secretEnc: row.secretEnc ?? null,
     };
   },

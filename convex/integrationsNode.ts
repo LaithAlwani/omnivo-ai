@@ -23,6 +23,16 @@ import {
   calcomBookingOk,
   type CalcomBookingConfig,
 } from "./lib/providers/calcom";
+import {
+  ladigitalAvailabilityUrl,
+  ladigitalBookingUrl,
+  ladigitalBookingBody,
+  ladigitalBookingOk,
+  ladigitalLeadsUrl,
+  ladigitalLeadBody,
+  parseLadigitalSlots,
+  type LadigitalConfig,
+} from "./lib/providers/ladigital";
 
 // -----------------------------------------------------------------------------
 // Integrations (Node runtime) — encryption, connection tests, outbound event
@@ -195,9 +205,25 @@ export const dispatch = internalAction({
       businessId,
     });
     for (const t of targets) {
+      const secret = t.secretEnc ? decryptSecret(t.secretEnc) : null;
+
+      // LA Digital's CRM ingests captured leads only, in a flat shape at
+      // /api/agent/leads — translate rather than posting the generic envelope.
+      if (t.provider === "ladigital") {
+        if (event.type !== "lead.created") continue;
+        const url = ladigitalLeadsUrl(t.config as LadigitalConfig);
+        if (!url) continue;
+        const body = JSON.stringify(ladigitalLeadBody(event.data));
+        try {
+          await fetchJson(url, { method: "POST", body, secret });
+        } catch (e) {
+          console.error(`[integrations] ladigital lead dispatch failed`, e);
+        }
+        continue;
+      }
+
       const url = (t.config as { url?: string })?.url;
       if (!url) continue;
-      const secret = t.secretEnc ? decryptSecret(t.secretEnc) : null;
       const body = JSON.stringify({ event: event.type, data: event.data });
       try {
         await fetchJson(url, { method: "POST", body, secret });
@@ -308,6 +334,18 @@ export const providerAvailability = internalAction({
       }
     }
 
+    if (conn.provider === "ladigital") {
+      const url = ladigitalAvailabilityUrl(conn.config as LadigitalConfig);
+      if (!url) return { handled: false as const };
+      try {
+        const { ok, json } = await fetchJson(url, { method: "GET", secret });
+        if (!ok) return { handled: true as const, slots: [] };
+        return { handled: true as const, slots: parseLadigitalSlots(json) };
+      } catch {
+        return { handled: true as const, slots: [] };
+      }
+    }
+
     return { handled: false as const };
   },
 });
@@ -371,6 +409,29 @@ export const providerCreateBooking = internalAction({
           headers: { "cal-api-version": CALCOM_VERSION_BOOKINGS },
         });
         return { handled: true as const, ok: calcomBookingOk(status, json) };
+      } catch {
+        return { handled: true as const, ok: false };
+      }
+    }
+
+    if (conn.provider === "ladigital") {
+      const url = ladigitalBookingUrl(conn.config as LadigitalConfig);
+      if (!url) return { handled: false as const };
+      const body = JSON.stringify(
+        ladigitalBookingBody({
+          startMs: args.startMs,
+          customerName: args.customerName,
+          customerEmail: args.customerEmail,
+          customerPhone: args.customerPhone,
+        }),
+      );
+      try {
+        const { status, json } = await fetchJson(url, {
+          method: "POST",
+          body,
+          secret,
+        });
+        return { handled: true as const, ok: ladigitalBookingOk(status, json) };
       } catch {
         return { handled: true as const, ok: false };
       }

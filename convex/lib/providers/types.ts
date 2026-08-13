@@ -12,7 +12,7 @@
 export type BookingCapability = "read" | "write" | "cancel";
 
 /** Which booking implementation is active for a tenant. */
-export type BookingProviderId = "webhook" | "calcom";
+export type BookingProviderId = "webhook" | "calcom" | "ladigital";
 
 export interface BookingProviderDescriptor {
   id: BookingProviderId;

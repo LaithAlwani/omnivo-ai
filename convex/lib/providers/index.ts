@@ -9,6 +9,7 @@ import type {
   BookingResult,
   Slot,
 } from "./types";
+import { ladigitalBase } from "./ladigital";
 
 // -----------------------------------------------------------------------------
 // Provider resolution + dispatch — the ONE place an agent-invocable booking
@@ -55,6 +56,15 @@ export function decideBookingProvider(input: {
     // Cal.com reads slots + places bookings, but only with an event type + key.
     if (cfg.eventTypeId && integration.hasSecret) {
       return { id: "calcom", caps: new Set<BookingCapability>(["read", "write"]) };
+    }
+    return null;
+  }
+
+  if (integration.provider === "ladigital") {
+    const cfg = (integration.config ?? {}) as { baseUrl?: string };
+    // LA Digital's agent API reads slots + books, but needs the site URL + key.
+    if (ladigitalBase({ baseUrl: cfg.baseUrl }) && integration.hasSecret) {
+      return { id: "ladigital", caps: new Set<BookingCapability>(["read", "write"]) };
     }
     return null;
   }

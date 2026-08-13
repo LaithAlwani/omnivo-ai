@@ -10,6 +10,7 @@ import type { Doc } from "./_generated/dataModel";
 import { requireInstallerAccess } from "./lib/authz";
 import { appError } from "./lib/errors";
 import { entitlementsFor } from "./entitlements";
+import { ladigitalAvailabilityUrl } from "./lib/providers/ladigital";
 
 /** Resolve a business by slug or throw. */
 async function businessBySlug(
@@ -39,6 +40,7 @@ export const providerValidator = v.union(
   v.literal("webhook"),
   v.literal("link"),
   v.literal("calcom"),
+  v.literal("ladigital"),
   v.literal("calendly"),
   v.literal("acuity"),
   v.literal("square"),
@@ -222,9 +224,15 @@ export const testContext = internalQuery({
       url?: string;
       availabilityUrl?: string;
       bookingUrl?: string;
+      baseUrl?: string;
     };
     return {
-      url: cfg.url ?? cfg.availabilityUrl ?? cfg.bookingUrl ?? null,
+      url:
+        cfg.url ??
+        cfg.availabilityUrl ??
+        cfg.bookingUrl ??
+        ladigitalAvailabilityUrl(cfg) ??
+        null,
       secretEnc: row.secretEnc ?? null,
     };
   },

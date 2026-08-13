@@ -43,6 +43,7 @@ import type * as lib_leoPrompt from "../lib/leoPrompt.js";
 import type * as lib_modelPricing from "../lib/modelPricing.js";
 import type * as lib_providers_calcom from "../lib/providers/calcom.js";
 import type * as lib_providers_index from "../lib/providers/index.js";
+import type * as lib_providers_ladigital from "../lib/providers/ladigital.js";
 import type * as lib_providers_types from "../lib/providers/types.js";
 import type * as lib_providers_webhook from "../lib/providers/webhook.js";
 import type * as lib_resend from "../lib/resend.js";
@@ -102,6 +103,7 @@ declare const fullApi: ApiFromModules<{
   "lib/modelPricing": typeof lib_modelPricing;
   "lib/providers/calcom": typeof lib_providers_calcom;
   "lib/providers/index": typeof lib_providers_index;
+  "lib/providers/ladigital": typeof lib_providers_ladigital;
   "lib/providers/types": typeof lib_providers_types;
   "lib/providers/webhook": typeof lib_providers_webhook;
   "lib/resend": typeof lib_resend;

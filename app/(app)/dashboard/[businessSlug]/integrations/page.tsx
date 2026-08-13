@@ -66,8 +66,9 @@ function IntegrationsInner() {
         canEdit={canEdit}
         kind="crmOutbound"
         title="CRM — outbound sync"
-        blurb="POST new leads to this URL (e.g. a Zapier or CRM webhook)."
+        blurb="Send new leads to your CRM — pick LA Digital, or POST to any URL (e.g. a Zapier or CRM webhook)."
         current={find("crmOutbound")}
+        allowLadigital
       />
       <WebhookCard
         slug={b.slug}
@@ -112,7 +113,7 @@ function StatusPill({ conn }: { conn: Conn }) {
   );
 }
 
-type BookingProvider = "calcom" | "link" | "webhook";
+type BookingProvider = "calcom" | "ladigital" | "link" | "webhook";
 
 function BookingCard({
   slug,
@@ -129,15 +130,19 @@ function BookingCard({
     bookingUrl?: string;
     eventTypeId?: number | string;
     schedulingLink?: string;
+    baseUrl?: string;
   };
   const cur = current?.provider as BookingProvider | undefined;
   const [provider, setProvider] = useState<BookingProvider>(
-    cur === "webhook" || cur === "link" || cur === "calcom" ? cur : "calcom",
+    cur === "webhook" || cur === "link" || cur === "calcom" || cur === "ladigital"
+      ? cur
+      : "calcom",
   );
   const [eventTypeId, setEventTypeId] = useState(String(cfg.eventTypeId ?? ""));
   const [schedulingLink, setLink] = useState(cfg.schedulingLink ?? "");
   const [availabilityUrl, setA] = useState(cfg.availabilityUrl ?? "");
   const [bookingUrl, setBk] = useState(cfg.bookingUrl ?? "");
+  const [baseUrl, setBaseUrl] = useState(cfg.baseUrl ?? "");
   const [secret, setSecret] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -158,9 +163,11 @@ function BookingCard({
     const config =
       provider === "calcom"
         ? { eventTypeId: eventTypeId.trim() ? Number(eventTypeId.trim()) : undefined }
-        : provider === "link"
-          ? { schedulingLink: schedulingLink.trim() }
-          : { availabilityUrl, bookingUrl };
+        : provider === "ladigital"
+          ? { baseUrl: baseUrl.trim() }
+          : provider === "link"
+            ? { schedulingLink: schedulingLink.trim() }
+            : { availabilityUrl, bookingUrl };
     return act(() =>
       save({ slug, kind: "booking", provider, config, secret: secret || undefined }),
     );
@@ -188,6 +195,7 @@ function BookingCard({
           className={inputCls}
         >
           <option value="calcom">Cal.com — assistant books in chat</option>
+          <option value="ladigital">LA Digital — assistant books in chat</option>
           <option value="link">Booking link — assistant hands off (Calendly, Acuity…)</option>
           <option value="webhook">Custom webhook</option>
         </select>
@@ -206,6 +214,24 @@ function BookingCard({
               onChange={(e) => setSecret(e.target.value)}
               type="password"
               placeholder={keyPlaceholder}
+            />
+          </>
+        )}
+
+        {provider === "ladigital" && (
+          <>
+            <input
+              className={inputCls}
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="Site URL (e.g. https://acme.ladigital.ca)"
+            />
+            <input
+              className={inputCls}
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              type="password"
+              placeholder={`${keyPlaceholder} (AGENT_API_KEY)`}
             />
           </>
         )}
@@ -254,7 +280,8 @@ function BookingCard({
           </button>
           {current && (
             <>
-              {current.provider === "webhook" && (
+              {(current.provider === "webhook" ||
+                current.provider === "ladigital") && (
                 <button
                   onClick={() =>
                     act(async () => {
@@ -284,6 +311,8 @@ function BookingCard({
   );
 }
 
+type CrmProvider = "webhook" | "ladigital";
+
 function WebhookCard({
   slug,
   canEdit,
@@ -291,6 +320,7 @@ function WebhookCard({
   title,
   blurb,
   current,
+  allowLadigital = false,
 }: {
   slug: string;
   canEdit: boolean;
@@ -298,13 +328,19 @@ function WebhookCard({
   title: string;
   blurb: string;
   current: Conn;
+  allowLadigital?: boolean;
 }) {
   const { save, test, remove } = useConnActions();
-  const cfg = (current?.config ?? {}) as { url?: string };
+  const cfg = (current?.config ?? {}) as { url?: string; baseUrl?: string };
+  const [provider, setProvider] = useState<CrmProvider>(
+    current?.provider === "ladigital" ? "ladigital" : "webhook",
+  );
   const [url, setUrl] = useState(cfg.url ?? "");
+  const [baseUrl, setBaseUrl] = useState(cfg.baseUrl ?? "");
   const [secret, setSecret] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const isLadigital = allowLadigital && provider === "ladigital";
 
   async function act(fn: () => Promise<unknown>) {
     setMsg(null);
@@ -326,19 +362,42 @@ function WebhookCard({
       </div>
       <p className="mt-1 text-sm text-muted">{blurb}</p>
       <fieldset disabled={!canEdit || busy} className="mt-4 space-y-2">
-        <input
-          className={inputCls}
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://…"
-        />
+        {allowLadigital && (
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value as CrmProvider)}
+            className={inputCls}
+          >
+            <option value="webhook">Custom webhook / Zapier</option>
+            <option value="ladigital">LA Digital CRM</option>
+          </select>
+        )}
+        {isLadigital ? (
+          <input
+            className={inputCls}
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="Site URL (e.g. https://acme.ladigital.ca)"
+          />
+        ) : (
+          <input
+            className={inputCls}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://…"
+          />
+        )}
         <input
           className={inputCls}
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
           type="password"
           placeholder={
-            current?.hasSecret ? "API key (leave blank to keep)" : "API key (optional)"
+            current?.hasSecret
+              ? "API key (leave blank to keep)"
+              : isLadigital
+                ? "API key (AGENT_API_KEY)"
+                : "API key (optional)"
           }
         />
       </fieldset>
@@ -350,8 +409,8 @@ function WebhookCard({
                 save({
                   slug,
                   kind,
-                  provider: "webhook",
-                  config: { url },
+                  provider: isLadigital ? "ladigital" : "webhook",
+                  config: isLadigital ? { baseUrl } : { url },
                   secret: secret || undefined,
                 }),
               )

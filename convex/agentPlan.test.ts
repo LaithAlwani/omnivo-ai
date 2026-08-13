@@ -91,6 +91,30 @@ test("cal.com connection → full booking tools (external)", async () => {
   expect(p.bookingSystem).toBe("external");
 });
 
+// LA Digital client sites expose the shared /api/agent surface — a site URL + a
+// key makes it a full booking provider (read+write, external), no per-client
+// code change beyond the adapter itself.
+test("ladigital connection → full booking tools (external)", async () => {
+  const t = convexTest(schema, modules);
+  const { businessId } = await tenant(t);
+  await t.run((ctx) =>
+    ctx.db.insert("integrations", {
+      businessId,
+      kind: "booking" as const,
+      provider: "ladigital" as const,
+      config: { baseUrl: "https://acme.ladigital.ca" },
+      secretEnc: "enc",
+      active: true,
+      verified: false,
+    }),
+  );
+
+  const p = await plan(t, businessId);
+  expect(p.toolNames).toContain("check_availability");
+  expect(p.toolNames).toContain("book_appointment");
+  expect(p.bookingSystem).toBe("external");
+});
+
 // A "link" provider isn't tool-capable — no booking tools, but the scheduling
 // link is surfaced so the agent hands it off.
 test("booking link → hand-off link surfaced, no booking tools", async () => {
