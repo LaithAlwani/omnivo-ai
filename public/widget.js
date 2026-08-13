@@ -71,9 +71,15 @@
     setOpen(!open);
   };
 
-  // The iframe asks to close itself (its × button).
+  // The iframe asks to close itself (its × button). Trust the message when it
+  // comes from our own iframe's window (e.source) — that's robust to any origin
+  // quirk (apex/www or app. redirects) that would fail a strict origin-string
+  // check and silently swallow the close. Fall back to the origin match for
+  // browsers that don't expose e.source. Closing only hides the iframe (its
+  // conversation stays in memory and reopens intact until the page reloads).
   window.addEventListener("message", function (e) {
-    if (e.origin !== appOrigin) return;
+    var fromFrame = frame.contentWindow && e.source === frame.contentWindow;
+    if (!fromFrame && e.origin !== appOrigin) return;
     if (e.data && e.data.type === "ai-engine:close") setOpen(false);
   });
 
