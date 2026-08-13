@@ -75,6 +75,31 @@ async function fetchJson(
   }
 }
 
+/** Classify a connection test/probe response into pass/fail + a readable line.
+ *  A working connection answers 2xx. Auth failures (401/403) and a missing
+ *  endpoint (404) are DOWN — the agent can't actually use the connection — not
+ *  "reachable". 405 means the endpoint exists but doesn't take GET (e.g. a
+ *  POST-only webhook), which still counts as reachable. Shared by the manual
+ *  Test button and the health cron so they agree. */
+function classifyStatus(status: number): { ok: boolean; detail: string } {
+  if (status >= 200 && status < 300) {
+    return { ok: true, detail: `Connected (HTTP ${status}).` };
+  }
+  if (status === 405) {
+    return { ok: true, detail: `Reachable (HTTP ${status}).` };
+  }
+  if (status === 401 || status === 403) {
+    return { ok: false, detail: `Unauthorized — check the API key (HTTP ${status}).` };
+  }
+  if (status === 404) {
+    return { ok: false, detail: `Not found — check the URL (HTTP ${status}).` };
+  }
+  if (status >= 500) {
+    return { ok: false, detail: `Server error (HTTP ${status}).` };
+  }
+  return { ok: false, detail: `HTTP ${status}.` };
+}
+
 // --- Save + test ------------------------------------------------------------
 
 /** Save a connection (manager + Integrations module gated). The secret is
@@ -125,8 +150,7 @@ export const test = action({
     let detail = "";
     try {
       const res = await fetchJson(target.url, { method: "GET", secret });
-      ok = res.status > 0 && res.status < 500; // reachable + not a server error
-      detail = ok ? `Reachable (HTTP ${res.status}).` : `HTTP ${res.status}.`;
+      ({ ok, detail } = classifyStatus(res.status));
     } catch (e) {
       detail = e instanceof Error ? e.message : "Request failed.";
     }
@@ -158,8 +182,9 @@ export const probeConnection = internalAction({
     let error: string | undefined;
     try {
       const res = await fetchJson(target.url, { method: "GET", secret });
-      ok = res.status > 0 && res.status < 500;
-      if (!ok) error = `HTTP ${res.status}`;
+      const c = classifyStatus(res.status);
+      ok = c.ok;
+      if (!ok) error = c.detail;
     } catch (e) {
       error = e instanceof Error ? e.message : "Request failed";
     }
