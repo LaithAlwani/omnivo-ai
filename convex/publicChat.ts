@@ -25,6 +25,37 @@ const messageValidator = v.object({
   content: v.string(),
 });
 
+// Map a failure from the Anthropic call (or anything thrown while driving the
+// tool loop) to a short, plain-English line the visitor can read. Operator
+// causes (a bad/expired API key) are never exposed — they're logged instead.
+function friendlyModelError(e: unknown): string {
+  if (e instanceof Anthropic.APIConnectionTimeoutError) {
+    return "That took a little too long to come back — please try again in a moment.";
+  }
+  if (e instanceof Anthropic.APIConnectionError) {
+    return "I'm having trouble connecting right now — please try again in a moment.";
+  }
+  if (e instanceof Anthropic.APIError) {
+    const status = e.status ?? 0;
+    if (status === 401 || status === 403) {
+      return "The assistant isn't fully set up right now. Please reach out to us directly and we'll help you out.";
+    }
+    if (status === 429) {
+      return "I'm getting a lot of requests right now — please give it a moment and try again.";
+    }
+    if (status === 529 || status === 503) {
+      return "I'm a little overloaded at the moment — please try again shortly.";
+    }
+    if (status >= 500) {
+      return "Something went wrong on my end — please try again in a moment.";
+    }
+    if (status === 400) {
+      return "I couldn't quite process that — could you try rephrasing?";
+    }
+  }
+  return "I hit a snag just now — please try again in a moment.";
+}
+
 export const chat = action({
   args: {
     embedKey: v.string(),
@@ -39,10 +70,16 @@ export const chat = action({
   handler: async (ctx, args): Promise<{ reply: string; requestContact: boolean }> => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      appError(
-        "CONFIG",
-        "The assistant isn't configured yet — set ANTHROPIC_API_KEY on the Convex deployment.",
+      // Deployment-wide misconfiguration — log for the operator, but never show
+      // the internal cause to a visitor. Degrade to a graceful, honest reply.
+      console.error(
+        "[publicChat] ANTHROPIC_API_KEY is not set on the Convex deployment",
       );
+      return {
+        reply:
+          "The assistant isn't fully set up right now. Please reach out to us directly and we'll help you out.",
+        requestContact: false,
+      };
     }
 
     const { businessId } = await verifyKey(ctx, args.embedKey, args.origin);
@@ -184,49 +221,87 @@ export const chat = action({
       return m;
     };
 
-    let response = await runTurn();
+    // Meter this turn's tokens onto the conversation + the account (drives AI
+    // credits + our cost/margin). Fire-and-forget so it never blocks the reply;
+    // runs on both the success and the error path so partial usage is still
+    // accounted for.
+    const meterUsage = () =>
+      ctx.scheduler.runAfter(0, internal.conversations.recordUsage, {
+        businessId,
+        conversationKey: args.conversationId,
+        model,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+      });
 
     // Whether the model asked to show the visitor a contact form this turn — the
     // widget renders it and submits directly to public.captureLead.
     let requestContact = false;
 
-    // Tool loop — bounded so a misbehaving model can't spin forever.
-    let guard = 0;
-    while (response.stop_reason === "tool_use" && guard++ < 6) {
-      messages.push({ role: "assistant", content: response.content });
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-      for (const block of response.content) {
-        if (block.type !== "tool_use") continue;
-        if (block.name === "request_contact") requestContact = true;
-        const { result } = await ctx.runAction(internal.assistantTools.execute, {
-          businessId,
-          timezone: context.timezone ?? undefined,
-          nowMs: Date.now(),
-          capabilities: Array.from(capabilities),
-          name: block.name,
-          input: (block.input ?? {}) as Record<string, unknown>,
+    let response: Anthropic.Message;
+    try {
+      response = await runTurn();
+
+      // Tool loop — bounded so a misbehaving model can't spin forever.
+      let guard = 0;
+      while (response.stop_reason === "tool_use" && guard++ < 6) {
+        messages.push({ role: "assistant", content: response.content });
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        for (const block of response.content) {
+          if (block.type !== "tool_use") continue;
+          if (block.name === "request_contact") requestContact = true;
+          // A single failing tool shouldn't sink the whole turn — feed the model
+          // an error result so it can recover (apologize / hand off) in words.
+          let toolContent: string;
+          try {
+            const { result } = await ctx.runAction(
+              internal.assistantTools.execute,
+              {
+                businessId,
+                timezone: context.timezone ?? undefined,
+                nowMs: Date.now(),
+                capabilities: Array.from(capabilities),
+                name: block.name,
+                input: (block.input ?? {}) as Record<string, unknown>,
+              },
+            );
+            toolContent = result;
+          } catch (toolErr) {
+            console.error(`[publicChat] tool "${block.name}" failed`, toolErr);
+            toolContent = "That action didn't go through just now.";
+          }
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: toolContent,
+          });
+        }
+        messages.push({ role: "user", content: toolResults });
+        response = await runTurn();
+      }
+    } catch (e) {
+      // The model call (or the loop) failed — degrade to a readable message
+      // instead of throwing a raw error at the widget. Log the real cause.
+      console.error("[publicChat] chat turn failed", e);
+      await meterUsage();
+      const message = friendlyModelError(e);
+      if (streamKey) {
+        // Resolve the live bubble to the message, then clear it shortly after.
+        await ctx.runMutation(internal.chatStream.putStream, {
+          key: streamKey,
+          text: message,
+          done: true,
         });
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: result,
+        await ctx.scheduler.runAfter(60_000, internal.chatStream.clearStream, {
+          key: streamKey,
         });
       }
-      messages.push({ role: "user", content: toolResults });
-      response = await runTurn();
+      return { reply: message, requestContact: false };
     }
 
-    // Meter this turn's tokens onto the conversation + the account (drives AI
-    // credits + our cost/margin). Fire-and-forget so it never blocks the reply.
-    await ctx.scheduler.runAfter(0, internal.conversations.recordUsage, {
-      businessId,
-      conversationKey: args.conversationId,
-      model,
-      inputTokens,
-      outputTokens,
-      cacheReadTokens,
-      cacheWriteTokens,
-    });
+    await meterUsage();
 
     const lastText = response.content
       .map((block) => (block.type === "text" ? block.text : ""))

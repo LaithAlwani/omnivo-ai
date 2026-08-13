@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "@/convex/_generated/api";
@@ -27,6 +28,42 @@ const THINKING = [
   "One moment…",
   "Putting that together…",
 ];
+
+/** Pull the human-readable message out of a thrown ConvexError — our server
+ *  errors carry a `{ code, message }` payload (e.g. "This assistant isn't live
+ *  yet.", "Too many requests right now…"). Falls back to a friendly default for
+ *  anything unstructured (network blips, unexpected errors). */
+function errorMessage(e: unknown, fallback: string): string {
+  if (e instanceof ConvexError) {
+    const data = e.data as { message?: string } | undefined;
+    if (data?.message) return data.message;
+  }
+  return fallback;
+}
+
+/** The Omnivo AI mark (machined ring + molten core) at footer scale, on light. */
+function OmnivoMark() {
+  return (
+    <svg viewBox="0 0 32 32" className="h-3 w-3 shrink-0" aria-hidden="true">
+      <defs>
+        <radialGradient id="omnivo-mark-core" cx="38%" cy="32%" r="72%">
+          <stop offset="0%" stopColor="#FF8A52" />
+          <stop offset="62%" stopColor="#F0522A" />
+          <stop offset="100%" stopColor="#D93C16" />
+        </radialGradient>
+      </defs>
+      <circle
+        cx="16"
+        cy="16"
+        r="14.4"
+        fill="none"
+        stroke="rgba(0,0,0,0.18)"
+        strokeWidth="1.6"
+      />
+      <circle cx="16" cy="16" r="7.2" fill="url(#omnivo-mark-core)" />
+    </svg>
+  );
+}
 
 /** Render assistant text as Markdown, styled for the light widget so headings,
  *  lists, code, links, and emphasis read cleanly (no raw ** or - symbols). */
@@ -80,8 +117,8 @@ function ContactForm({
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
       });
-    } catch {
-      setErr("Couldn't send that — please try again.");
+    } catch (e) {
+      setErr(errorMessage(e, "Couldn't send that — please try again."));
       setBusy(false);
     }
   }
@@ -173,6 +210,9 @@ export default function EmbedWidget() {
 
   const [config, setConfig] = useState<Config | null>(null);
   const [failed, setFailed] = useState(false);
+  const [failMsg, setFailMsg] = useState(
+    "This chat isn't available right now.",
+  );
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
   // The in-flight turn's stream key (null when idle). Drives the live bubble.
@@ -194,7 +234,13 @@ export default function EmbedWidget() {
         setConfig(c);
         setMessages([{ role: "assistant", content: c.welcomeMsg }]);
       })
-      .catch(() => live && setFailed(true));
+      .catch((e) => {
+        if (!live) return;
+        // Surface the real reason where it's visitor-safe ("This assistant
+        // isn't live yet." / origin not allowed), else a friendly fallback.
+        setFailMsg(errorMessage(e, "This chat isn't available right now."));
+        setFailed(true);
+      });
     return () => {
       live = false;
     };
@@ -227,12 +273,18 @@ export default function EmbedWidget() {
       });
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
       if (requestContact) setShowForm(true);
-    } catch {
+    } catch (e) {
+      // The server degrades most model failures into a friendly `reply`; this
+      // path is for the pre-flight throws (rate limit, key/serving) and network
+      // errors — surface their real message so the visitor understands.
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
-          content: "Sorry — I hit a snag. Please try again in a moment.",
+          content: errorMessage(
+            e,
+            "Sorry — I hit a snag. Please try again in a moment.",
+          ),
         },
       ]);
     } finally {
@@ -263,7 +315,7 @@ export default function EmbedWidget() {
   if (failed) {
     return (
       <div className="grid h-dvh place-items-center bg-white p-6 text-center text-sm text-gray-500">
-        This chat isn&rsquo;t available right now.
+        {failMsg}
       </div>
     );
   }
@@ -397,9 +449,15 @@ export default function EmbedWidget() {
           </button>
         </div>
         {!config?.whiteLabel && (
-          <p className="mt-1.5 text-center text-[10px] text-gray-400">
-            Powered by Omnivo AI
-          </p>
+          <a
+            href="https://omnivoai.ca"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1.5 flex items-center justify-center gap-1 text-[10px] text-gray-400 transition-colors hover:text-gray-600"
+          >
+            <OmnivoMark />
+            <span>Powered by Omnivo AI</span>
+          </a>
         )}
       </div>
     </div>
