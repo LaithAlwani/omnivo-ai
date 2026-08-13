@@ -5,6 +5,7 @@ import {
   ladigitalAvailabilityUrl,
   ladigitalBookingUrl,
   ladigitalLeadsUrl,
+  ladigitalContactsUrl,
   parseLadigitalSlots,
   ladigitalBookingBody,
   ladigitalBookingOk,
@@ -38,7 +39,11 @@ test("endpoint URLs derive from the base", () => {
   expect(ladigitalLeadsUrl(c)).toBe(
     "https://acme.ladigital.ca/api/agent/leads",
   );
+  expect(ladigitalContactsUrl(c)).toBe(
+    "https://acme.ladigital.ca/api/agent/contacts",
+  );
   expect(ladigitalAvailabilityUrl({})).toBeNull();
+  expect(ladigitalContactsUrl({})).toBeNull();
 });
 
 test("parseLadigitalSlots flattens days[].slots[].startUtc → sorted ms", () => {

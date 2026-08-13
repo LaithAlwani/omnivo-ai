@@ -30,6 +30,7 @@ import {
   ladigitalBookingOk,
   ladigitalLeadsUrl,
   ladigitalLeadBody,
+  ladigitalContactsUrl,
   parseLadigitalSlots,
   type LadigitalConfig,
 } from "./lib/providers/ladigital";
@@ -277,7 +278,12 @@ export const lookupCustomer = internalAction({
       kind: "crmInbound",
     });
     if (!conn || !conn.active) return null;
-    const base = (conn.config as { url?: string })?.url;
+    // Named adapter (LA Digital) derives its lookup endpoint from the site URL;
+    // the generic webhook takes an explicit `url`.
+    const base =
+      conn.provider === "ladigital"
+        ? ladigitalContactsUrl(conn.config as LadigitalConfig)
+        : (conn.config as { url?: string })?.url;
     if (!base) return null;
     const secret = conn.secretEnc ? decryptSecret(conn.secretEnc) : null;
     const url = new URL(base);

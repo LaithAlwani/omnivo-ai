@@ -51,6 +51,11 @@ export function ladigitalLeadsUrl(config: LadigitalConfig): string | null {
   return base ? `${base}/api/agent/leads` : null;
 }
 
+export function ladigitalContactsUrl(config: LadigitalConfig): string | null {
+  const base = ladigitalBase(config);
+  return base ? `${base}/api/agent/contacts` : null;
+}
+
 /** Flatten the `{ days:[{ slots:[{ startUtc }] }] }` availability response into
  *  sorted start-ms values. Defensive across shapes: also accepts a top-level
  *  `slots` array, a bare array of days, and `start`/`time` on a slot. */

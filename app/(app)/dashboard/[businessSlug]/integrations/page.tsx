@@ -75,8 +75,9 @@ function IntegrationsInner() {
         canEdit={canEdit}
         kind="crmInbound"
         title="CRM — customer lookup"
-        blurb="The assistant GETs this URL with ?email= / ?phone= to recognize returning customers."
+        blurb="Recognize returning customers by email/phone — pick LA Digital, or a URL the assistant GETs with ?email= / ?phone=."
         current={find("crmInbound")}
+        allowLadigital
       />
     </div>
   );
